@@ -38,6 +38,25 @@ type PasswordResetConfirmBody = {
   newPassword?: string;
 };
 
+type PasskeyRegisterStartBody = {
+  authenticator?: 'platform' | 'crossPlatform' | 'unspecified';
+};
+
+type PasskeyRegisterVerifyBody = {
+  passkeyId?: string;
+  publicKeyCredential?: Record<string, unknown>;
+  passkeyName?: string;
+};
+
+type PasskeyLoginStartBody = {
+  loginName?: string;
+};
+
+type PasskeyLoginVerifyBody = {
+  passkeyLoginToken?: string;
+  publicKeyCredential?: Record<string, unknown>;
+};
+
 type IdpProvider = 'google' | 'apple';
 
 type IdpStartBody = {
@@ -112,6 +131,19 @@ type ZitadelPasswordResetResponse = {
   verificationCode?: string;
 };
 
+type ZitadelRegisterPasskeyResponse = {
+  passkeyId: string;
+  publicKeyCredentialCreationOptions: Record<string, unknown>;
+};
+
+type ZitadelSessionWebAuthNChallengeResponse = ZitadelCreateSessionResponse & {
+  challenges?: {
+    webAuthN?: {
+      publicKeyCredentialRequestOptions?: Record<string, unknown>;
+    };
+  };
+};
+
 type PendingIdpLink = {
   idpLink: {
     idpId: string;
@@ -121,6 +153,12 @@ type PendingIdpLink = {
   email: string | null;
   attemptedProvider: IdpProvider | null;
   requiredProvider: IdpProvider;
+  createdAt: number;
+};
+
+type PendingPasskeyLogin = {
+  zitadelSessionId: string;
+  zitadelSessionToken: string;
   createdAt: number;
 };
 
@@ -177,6 +215,7 @@ const zitadelApiBase = (process.env.ZITADEL_API_BASE ?? 'https://ahmeds-auth-qaw
   .replace(/\/$/, '');
 const zitadelServiceToken = process.env.ZITADEL_SERVICE_TOKEN;
 const zitadelOrganizationId = process.env.ZITADEL_ORGANIZATION_ID;
+const passkeyDomain = process.env.ZITADEL_PASSKEY_DOMAIN || process.env.PASSKEY_DOMAIN;
 const idpIds: Partial<Record<IdpProvider, string | undefined>> = {
   google: process.env.ZITADEL_GOOGLE_IDP_ID,
   apple: process.env.ZITADEL_APPLE_IDP_ID,
@@ -185,6 +224,7 @@ const idpIds: Partial<Record<IdpProvider, string | undefined>> = {
 const sessions = new Map<string, AppSession>();
 const passwordResetRequests = new Map<string, { userId: string; createdAt: number }>();
 const pendingIdpLinks = new Map<string, PendingIdpLink>();
+const pendingPasskeyLogins = new Map<string, PendingPasskeyLogin>();
 
 const app = new Hono();
 
@@ -344,6 +384,154 @@ function getPasswordResetUserId(resetRequestId: string | undefined) {
   }
 
   return request.userId;
+}
+
+async function startZitadelPasskeyRegistration(
+  userId: string,
+  authenticator: PasskeyRegisterStartBody['authenticator'] = 'platform'
+) {
+  assertPasskeyDomain();
+
+  return zitadelJson<ZitadelRegisterPasskeyResponse>(`/v2/users/${encodeURIComponent(userId)}/passkeys`, {
+    method: 'POST',
+    body: {
+      authenticator: toZitadelPasskeyAuthenticator(authenticator),
+      domain: passkeyDomain,
+    },
+  });
+}
+
+async function verifyZitadelPasskeyRegistration(
+  userId: string,
+  passkeyId: string,
+  publicKeyCredential: Record<string, unknown>,
+  passkeyName: string
+) {
+  await zitadelJson(`/v2/users/${encodeURIComponent(userId)}/passkeys/${encodeURIComponent(passkeyId)}`, {
+    method: 'POST',
+    body: {
+      publicKeyCredential,
+      passkeyName,
+    },
+  });
+}
+
+async function startZitadelPasskeyLogin(loginName: string) {
+  assertPasskeyDomain();
+
+  const createdSession = await zitadelJson<ZitadelSessionWebAuthNChallengeResponse>('/v2/sessions', {
+    method: 'POST',
+    body: {
+      checks: {
+        user: {
+          loginName,
+        },
+      },
+      challenges: {
+        webAuthN: {
+          domain: passkeyDomain,
+          userVerificationRequirement: 'USER_VERIFICATION_REQUIREMENT_REQUIRED',
+        },
+      },
+    },
+  });
+
+  const publicKeyCredentialRequestOptions =
+    createdSession.challenges?.webAuthN?.publicKeyCredentialRequestOptions;
+
+  if (!publicKeyCredentialRequestOptions) {
+    throw new Error('ZITADEL did not return a passkey challenge for this user.');
+  }
+
+  const passkeyLoginToken = nanoid(40);
+  pendingPasskeyLogins.set(passkeyLoginToken, {
+    zitadelSessionId: createdSession.sessionId,
+    zitadelSessionToken: createdSession.sessionToken,
+    createdAt: Date.now(),
+  });
+
+  return {
+    passkeyLoginToken,
+    publicKeyCredentialRequestOptions,
+  };
+}
+
+async function verifyZitadelPasskeyLogin(passkeyLoginToken: string, publicKeyCredential: Record<string, unknown>) {
+  const pendingLogin = getPendingPasskeyLogin(passkeyLoginToken);
+
+  if (!pendingLogin) {
+    throw new Error('The passkey login request expired. Try signing in again.');
+  }
+
+  const updatedSession = await zitadelJson<ZitadelUpdateSessionResponse>(
+    `/v2/sessions/${encodeURIComponent(pendingLogin.zitadelSessionId)}`,
+    {
+      method: 'PATCH',
+      body: {
+        checks: {
+          webAuthN: {
+            credentialAssertionData: publicKeyCredential,
+          },
+        },
+      },
+    }
+  );
+
+  const sessionState = await getZitadelSession(pendingLogin.zitadelSessionId, updatedSession.sessionToken);
+  const user = sessionState.session.factors?.user;
+
+  if (!user?.id || !user.loginName) {
+    throw new Error('ZITADEL did not return a verified passkey session.');
+  }
+
+  pendingPasskeyLogins.delete(passkeyLoginToken);
+
+  return {
+    zitadelSessionId: pendingLogin.zitadelSessionId,
+    zitadelSessionToken: updatedSession.sessionToken,
+    user: {
+      id: user.id,
+      loginName: user.loginName,
+      email: user.loginName.includes('@') ? user.loginName : null,
+      displayName: user.displayName ?? user.loginName,
+    } satisfies AuthUser,
+  };
+}
+
+function getPendingPasskeyLogin(passkeyLoginToken: string) {
+  const pendingLogin = pendingPasskeyLogins.get(passkeyLoginToken);
+
+  if (!pendingLogin) {
+    return null;
+  }
+
+  const maxAgeMs = 5 * 60 * 1000;
+
+  if (Date.now() - pendingLogin.createdAt > maxAgeMs) {
+    pendingPasskeyLogins.delete(passkeyLoginToken);
+    deleteZitadelSession(pendingLogin.zitadelSessionId, pendingLogin.zitadelSessionToken).catch(() => undefined);
+    return null;
+  }
+
+  return pendingLogin;
+}
+
+function assertPasskeyDomain() {
+  if (!passkeyDomain) {
+    throw new Error('ZITADEL_PASSKEY_DOMAIN is not configured.');
+  }
+}
+
+function toZitadelPasskeyAuthenticator(authenticator: PasskeyRegisterStartBody['authenticator']) {
+  if (authenticator === 'crossPlatform') {
+    return 'PASSKEY_AUTHENTICATOR_CROSS_PLATFORM';
+  }
+
+  if (authenticator === 'unspecified') {
+    return 'PASSKEY_AUTHENTICATOR_UNSPECIFIED';
+  }
+
+  return 'PASSKEY_AUTHENTICATOR_PLATFORM';
 }
 
 async function createZitadelSessionFromIdpIntent(
@@ -848,6 +1036,107 @@ app.post('/auth/password-reset/confirm', async (c) => {
         message: error instanceof Error ? error.message : 'Could not reset password.',
       },
       400
+    );
+  }
+});
+
+app.post('/auth/passkeys/register/start', async (c) => {
+  const session = getSession(c.req.header('Authorization'));
+
+  if (!session) {
+    return c.json({ message: 'Unauthorized.' }, 401);
+  }
+
+  const body = await c.req.json<PasskeyRegisterStartBody>().catch(() => null);
+
+  try {
+    const registration = await startZitadelPasskeyRegistration(session.user.id, body?.authenticator);
+
+    return c.json({
+      passkeyId: registration.passkeyId,
+      publicKeyCredentialCreationOptions: registration.publicKeyCredentialCreationOptions,
+    });
+  } catch (error) {
+    return c.json(
+      {
+        message: error instanceof Error ? error.message : 'Could not start passkey registration.',
+      },
+      400
+    );
+  }
+});
+
+app.post('/auth/passkeys/register/verify', async (c) => {
+  const session = getSession(c.req.header('Authorization'));
+
+  if (!session) {
+    return c.json({ message: 'Unauthorized.' }, 401);
+  }
+
+  const body = await c.req.json<PasskeyRegisterVerifyBody>().catch(() => null);
+  const passkeyId = body?.passkeyId?.trim();
+  const publicKeyCredential = body?.publicKeyCredential;
+  const passkeyName = body?.passkeyName?.trim() || 'Mobile passkey';
+
+  if (!passkeyId || !publicKeyCredential) {
+    return c.json({ message: 'passkeyId and publicKeyCredential are required.' }, 400);
+  }
+
+  try {
+    await verifyZitadelPasskeyRegistration(session.user.id, passkeyId, publicKeyCredential, passkeyName);
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        message: error instanceof Error ? error.message : 'Could not verify passkey registration.',
+      },
+      400
+    );
+  }
+});
+
+app.post('/auth/passkeys/login/start', async (c) => {
+  const body = await c.req.json<PasskeyLoginStartBody>().catch(() => null);
+  const loginName = body?.loginName?.trim();
+
+  if (!loginName) {
+    return c.json({ message: 'Email or username is required for passkey login.' }, 400);
+  }
+
+  try {
+    const challenge = await startZitadelPasskeyLogin(loginName);
+    return c.json(challenge);
+  } catch (error) {
+    return c.json(
+      {
+        message: error instanceof Error ? error.message : 'Could not start passkey login.',
+      },
+      400
+    );
+  }
+});
+
+app.post('/auth/passkeys/login/verify', async (c) => {
+  const body = await c.req.json<PasskeyLoginVerifyBody>().catch(() => null);
+  const passkeyLoginToken = body?.passkeyLoginToken?.trim();
+  const publicKeyCredential = body?.publicKeyCredential;
+
+  if (!passkeyLoginToken || !publicKeyCredential) {
+    return c.json({ message: 'passkeyLoginToken and publicKeyCredential are required.' }, 400);
+  }
+
+  try {
+    const { user, zitadelSessionId, zitadelSessionToken } = await verifyZitadelPasskeyLogin(
+      passkeyLoginToken,
+      publicKeyCredential
+    );
+    return c.json(createAppSession(user, zitadelSessionId, zitadelSessionToken));
+  } catch (error) {
+    return c.json(
+      {
+        message: error instanceof Error ? error.message : 'Could not complete passkey login.',
+      },
+      401
     );
   }
 });

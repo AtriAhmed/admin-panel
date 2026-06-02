@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
+      "associatedDomains": ["webcredentials:auth.ahmedatri.com"],
       "supportsTablet": true,
       "bundleIdentifier": "com.ahmedatri.zitadel-custom-auth",
       "infoPlist": {
@@ -44,7 +45,18 @@
         }
       ],
       "expo-web-browser",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 36
+          }
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

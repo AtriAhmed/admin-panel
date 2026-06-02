@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const bffBaseUrl =
   process.env.EXPO_PUBLIC_BFF_URL ??
-  (Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://172.31.159.58:8787');
+  (Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://192.168.1.105:8787');
 const socialRedirectUrl = Linking.createURL('auth/idp/callback');
 const passwordResetRedirectUrl = Linking.createURL('password/reset');
 
@@ -80,9 +80,20 @@ type IdpStartResponse = {
   authUrl: string;
 };
 
+type PasskeyRegisterStartResponse = {
+  passkeyId: string;
+  publicKeyCredentialCreationOptions: Record<string, unknown>;
+};
+
+type PasskeyLoginStartResponse = {
+  passkeyLoginToken: string;
+  publicKeyCredentialRequestOptions: Record<string, unknown>;
+};
+
 type PasswordResetMode = 'login' | 'request' | 'confirm';
 
 type SocialProvider = 'google' | 'apple';
+type PasskeyAction = 'register' | 'login';
 
 type StoredSession = {
   token: string | null;
@@ -128,6 +139,7 @@ export default function HomeScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(null);
+  const [passkeyAction, setPasskeyAction] = useState<PasskeyAction | null>(null);
   const [pendingLink, setPendingLink] = useState<AccountLinkRequiredResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const linkingUrl = Linking.useURL();
@@ -138,6 +150,7 @@ export default function HomeScreen() {
     () => loginName.trim().length > 0 && password.length > 0 && !isBusy,
     [isBusy, loginName, password]
   );
+  const canSubmitPasskeyLogin = loginName.trim().length > 0 && !isBusy;
   const canRequestPasswordReset = resetLoginName.trim().length > 0 && !isBusy;
   const canConfirmPasswordReset =
     (resetUserId.trim().length > 0 || resetRequestId.trim().length > 0) &&
@@ -373,6 +386,120 @@ export default function HomeScreen() {
     }
   };
 
+  const registerPasskey = async () => {
+    if (!session.token) {
+      setErrorMessage('Log in before adding a passkey.');
+      return;
+    }
+
+    setIsBusy(true);
+    setPasskeyAction('register');
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const passkeys = await getPasskeysModule();
+
+      if (!passkeys.isSupported()) {
+        throw new Error('Passkeys are not supported in this app build or on this device.');
+      }
+
+      const start = await fetch(`${bffBaseUrl}/auth/passkeys/register/start`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          authenticator: 'platform',
+        }),
+      }).then((response) => parseJsonResponse<PasskeyRegisterStartResponse>(response));
+
+      const credential = await passkeys.create(
+        unwrapPublicKeyOptions(start.publicKeyCredentialCreationOptions) as Parameters<typeof passkeys.create>[0]
+      );
+
+      if (!credential) {
+        throw new Error('Passkey registration was cancelled.');
+      }
+
+      await fetch(`${bffBaseUrl}/auth/passkeys/register/verify`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session.token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          passkeyId: start.passkeyId,
+          publicKeyCredential: credential,
+          passkeyName: Device.modelName ? `${Device.modelName} passkey` : 'Mobile passkey',
+        }),
+      }).then((response) => parseJsonResponse<{ ok: true }>(response));
+
+      setInfoMessage('Passkey added. You can use it next time you sign in.');
+    } catch (error) {
+      setErrorMessage(formatPasskeyError(error, 'register'));
+    } finally {
+      setPasskeyAction(null);
+      setIsBusy(false);
+    }
+  };
+
+  const loginWithPasskey = async () => {
+    setIsBusy(true);
+    setPasskeyAction('login');
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const passkeys = await getPasskeysModule();
+
+      if (!passkeys.isSupported()) {
+        throw new Error('Passkeys are not supported in this app build or on this device.');
+      }
+
+      const start = await fetch(`${bffBaseUrl}/auth/passkeys/login/start`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          loginName: loginName.trim(),
+        }),
+      }).then((response) => parseJsonResponse<PasskeyLoginStartResponse>(response));
+
+      const credential = await passkeys.get(
+        unwrapPublicKeyOptions(start.publicKeyCredentialRequestOptions) as Parameters<typeof passkeys.get>[0]
+      );
+
+      if (!credential) {
+        throw new Error('Passkey login was cancelled.');
+      }
+
+      const data = await fetch(`${bffBaseUrl}/auth/passkeys/login/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          passkeyLoginToken: start.passkeyLoginToken,
+          publicKeyCredential: credential,
+        }),
+      }).then((response) => parseJsonResponse<LoginResponse>(response));
+
+      await storeSession({
+        token: data.sessionToken,
+        user: data.user,
+      });
+      setPassword('');
+    } catch (error) {
+      setErrorMessage(formatPasskeyError(error, 'login'));
+    } finally {
+      setPasskeyAction(null);
+      setIsBusy(false);
+    }
+  };
+
   const logout = async () => {
     setIsBusy(true);
     setErrorMessage(null);
@@ -525,16 +652,29 @@ export default function HomeScreen() {
             {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
 
             {isLoggedIn ? (
-              <Pressable
-                disabled={isBusy}
-                onPress={logout}
-                style={({ pressed }) => [
-                  styles.button,
-                  styles.secondaryButton,
-                  (pressed || isBusy) && styles.buttonPressed,
-                ]}>
-                <Text style={styles.secondaryButtonText}>{isBusy ? 'Signing out...' : 'Logout'}</Text>
-              </Pressable>
+              <View style={styles.authenticatedActions}>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={registerPasskey}
+                  style={({ pressed }) => [
+                    styles.button,
+                    (pressed || passkeyAction === 'register') && styles.buttonPressed,
+                  ]}>
+                  <Text style={styles.buttonText}>
+                    {passkeyAction === 'register' ? 'Adding passkey...' : 'Add passkey'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={logout}
+                  style={({ pressed }) => [
+                    styles.button,
+                    styles.secondaryButton,
+                    (pressed || isBusy) && styles.buttonPressed,
+                  ]}>
+                  <Text style={styles.secondaryButtonText}>{isBusy ? 'Signing out...' : 'Logout'}</Text>
+                </Pressable>
+              </View>
             ) : resetMode === 'request' ? (
               <Pressable
                 disabled={!canRequestPasswordReset}
@@ -612,6 +752,18 @@ export default function HomeScreen() {
             {!isLoggedIn && !isResettingPassword && !pendingLink ? (
               <View style={styles.socialActions}>
                 <Pressable
+                  disabled={!canSubmitPasskeyLogin}
+                  onPress={loginWithPasskey}
+                  style={({ pressed }) => [
+                    styles.socialButton,
+                    !canSubmitPasskeyLogin && styles.buttonDisabled,
+                    (pressed || passkeyAction === 'login') && styles.buttonPressed,
+                  ]}>
+                  <Text style={styles.socialButtonText}>
+                    {passkeyAction === 'login' ? 'Opening passkey...' : 'Continue with passkey'}
+                  </Text>
+                </Pressable>
+                <Pressable
                   disabled={isBusy}
                   onPress={() => loginWithProvider('google')}
                   style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
@@ -678,6 +830,26 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function providerLabel(provider: SocialProvider) {
   return provider === 'google' ? 'Google' : 'Apple';
+}
+
+async function getPasskeysModule() {
+  return import('react-native-passkeys');
+}
+
+function unwrapPublicKeyOptions(options: Record<string, unknown>) {
+  return isRecord(options.publicKey) ? options.publicKey : options;
+}
+
+function formatPasskeyError(error: unknown, action: PasskeyAction) {
+  const message = error instanceof Error ? error.message : '';
+
+  if (message.includes('AuthorizationError error 1006')) {
+    return action === 'register'
+      ? 'This device already has a passkey for this account.'
+      : 'No matching passkey was found for this account on this device.';
+  }
+
+  return message || (action === 'register' ? 'Could not add passkey.' : 'Could not sign in with passkey.');
 }
 
 function getCallbackParams(url: URL) {
@@ -893,6 +1065,9 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
   socialActions: {
+    gap: 10,
+  },
+  authenticatedActions: {
     gap: 10,
   },
   linkPanel: {

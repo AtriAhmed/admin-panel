@@ -32,9 +32,13 @@ ZITADEL_API_BASE=https://your-instance.zitadel.cloud
 ZITADEL_SERVICE_TOKEN=your-service-token
 ZITADEL_GOOGLE_IDP_ID=your-google-idp-id
 ZITADEL_APPLE_IDP_ID=your-apple-idp-id
+ZITADEL_ORGANIZATION_ID=your-organization-id
+ZITADEL_PASSKEY_DOMAIN=auth.your-domain.example
 ```
 
 `HOST=0.0.0.0` is important when testing on a real iPhone, because the phone must reach the BFF over the network.
+
+`ZITADEL_PASSKEY_DOMAIN` is the WebAuthn relying-party domain used for native passkeys. It must be a real HTTPS domain that is connected to the app through Apple Associated Domains and Android Digital Asset Links.
 
 Check the BFF from the Mac:
 
@@ -124,6 +128,56 @@ If the app was built before the env change, rebuild it.
 ### Physical iPhone Cannot Use `localhost`
 
 `localhost` on the iPhone means the iPhone itself, not the Mac. Use the Mac IP address in `EXPO_PUBLIC_BFF_URL`.
+
+### Native Passkeys Do Not Open Or Say Unsupported
+
+Native passkeys require a rebuilt development build. They will not work in Expo Go or in an older development build created before `react-native-passkeys` was installed.
+
+Rebuild the development app:
+
+```bash
+cd frontend
+npx expo run:ios
+```
+
+or:
+
+```bash
+cd frontend
+npx eas-cli@latest build --profile development --platform ios
+```
+
+For iOS, the relying-party domain must host:
+
+```text
+https://YOUR_PASSKEY_DOMAIN/.well-known/apple-app-site-association
+```
+
+with:
+
+```json
+{
+  "webcredentials": {
+    "apps": ["APPLE_TEAM_ID.com.ahmedatri.zitadel-custom-auth"]
+  }
+}
+```
+
+Then add this to `frontend/app.json` under `expo.ios` before rebuilding:
+
+```json
+"associatedDomains": ["webcredentials:YOUR_PASSKEY_DOMAIN"]
+```
+
+For Android, the same domain must host:
+
+```text
+https://YOUR_PASSKEY_DOMAIN/.well-known/assetlinks.json
+```
+
+with the app package name and signing certificate fingerprint.
+
+The BFF `ZITADEL_PASSKEY_DOMAIN` value must match this domain.
 
 ### Production
 
