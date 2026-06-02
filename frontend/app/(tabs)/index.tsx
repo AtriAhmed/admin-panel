@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -16,8 +17,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const bffBaseUrl =
-  Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://192.168.1.100:8787';
+  process.env.EXPO_PUBLIC_BFF_URL ??
+  (Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://172.31.159.58:8787');
 const socialRedirectUrl = Linking.createURL('auth/idp/callback');
+const passwordResetRedirectUrl = Linking.createURL('password/reset');
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -64,9 +67,20 @@ type LoginResponse = {
   user: AuthUser;
 };
 
+type AccountLinkRequiredResponse = {
+  code: 'ACCOUNT_LINK_REQUIRED';
+  message: string;
+  pendingLinkToken: string;
+  attemptedProvider: SocialProvider | null;
+  requiredProvider: SocialProvider;
+  email?: string | null;
+};
+
 type IdpStartResponse = {
   authUrl: string;
 };
+
+type PasswordResetMode = 'login' | 'request' | 'confirm';
 
 type SocialProvider = 'google' | 'apple';
 
@@ -75,12 +89,26 @@ type StoredSession = {
   user: AuthUser | null;
 };
 
+class ApiResponseError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly data: unknown
+  ) {
+    super(message);
+  }
+}
+
 async function parseJsonResponse<T>(response: Response): Promise<T> {
   const body = await response.text();
   const data = body ? JSON.parse(body) : null;
 
   if (!response.ok) {
-    throw new Error(data?.message ?? data?.error ?? `Request failed with status ${response.status}.`);
+    throw new ApiResponseError(
+      data?.message ?? data?.error ?? `Request failed with status ${response.status}.`,
+      response.status,
+      data
+    );
   }
 
   return data as T;
@@ -89,17 +117,33 @@ async function parseJsonResponse<T>(response: Response): Promise<T> {
 export default function HomeScreen() {
   const [loginName, setLoginName] = useState('');
   const [password, setPassword] = useState('');
+  const [resetMode, setResetMode] = useState<PasswordResetMode>('login');
+  const [resetLoginName, setResetLoginName] = useState('');
+  const [resetRequestId, setResetRequestId] = useState('');
+  const [resetUserId, setResetUserId] = useState('');
+  const [resetCode, setResetCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [session, setSession] = useState<StoredSession>({ token: null, user: null });
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(null);
+  const [pendingLink, setPendingLink] = useState<AccountLinkRequiredResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const linkingUrl = Linking.useURL();
 
   const isLoggedIn = Boolean(session.token);
+  const isResettingPassword = resetMode !== 'login';
   const canSubmit = useMemo(
     () => loginName.trim().length > 0 && password.length > 0 && !isBusy,
     [isBusy, loginName, password]
   );
+  const canRequestPasswordReset = resetLoginName.trim().length > 0 && !isBusy;
+  const canConfirmPasswordReset =
+    (resetUserId.trim().length > 0 || resetRequestId.trim().length > 0) &&
+    resetCode.trim().length > 0 &&
+    newPassword.length > 0 &&
+    !isBusy;
 
   const storeSession = useCallback(async (nextSession: StoredSession) => {
     await Promise.all([
@@ -134,6 +178,41 @@ export default function HomeScreen() {
       .finally(() => setIsLoading(false));
   }, [loadStoredSession]);
 
+  useEffect(() => {
+    if (!linkingUrl) {
+      return;
+    }
+
+    const resetParams = parsePasswordResetParams(linkingUrl);
+
+    if (!resetParams.userId || !resetParams.code) {
+      return;
+    }
+
+    setResetUserId(resetParams.userId);
+    setResetCode(resetParams.code);
+    setResetMode('confirm');
+    setErrorMessage(null);
+    setInfoMessage('Enter a new password to finish the reset.');
+  }, [linkingUrl]);
+
+  const showResetRequest = () => {
+    setResetLoginName(loginName);
+    setResetMode('request');
+    setErrorMessage(null);
+    setInfoMessage(null);
+  };
+
+  const showLogin = () => {
+    setResetMode('login');
+    setResetRequestId('');
+    setResetUserId('');
+    setResetCode('');
+    setNewPassword('');
+    setErrorMessage(null);
+    setInfoMessage(null);
+  };
+
   const login = async () => {
     setIsBusy(true);
     setErrorMessage(null);
@@ -162,7 +241,74 @@ export default function HomeScreen() {
     }
   };
 
-  const loginWithProvider = async (provider: SocialProvider) => {
+  const requestPasswordReset = async () => {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      const data = await fetch(`${bffBaseUrl}/auth/password-reset/request`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          loginName: resetLoginName.trim(),
+          redirectUrl: passwordResetRedirectUrl,
+        }),
+      }).then((response) => parseJsonResponse<{ message?: string; resetRequestId?: string }>(response));
+
+      setResetRequestId(data.resetRequestId ?? '');
+      setInfoMessage(data.message ?? 'If that account exists, a password reset link has been sent.');
+      setResetMode('confirm');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not request password reset.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const confirmPasswordReset = async () => {
+    setIsBusy(true);
+    setErrorMessage(null);
+    setInfoMessage(null);
+
+    try {
+      await fetch(`${bffBaseUrl}/auth/password-reset/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          resetRequestId: resetRequestId.trim(),
+          userId: resetUserId.trim(),
+          code: resetCode.trim(),
+          newPassword,
+        }),
+      }).then((response) => parseJsonResponse<{ ok: true }>(response));
+
+      setLoginName(resetLoginName);
+      setPassword('');
+      setResetRequestId('');
+      setResetUserId('');
+      setResetCode('');
+      setNewPassword('');
+      setResetMode('login');
+      setInfoMessage('Password reset. You can log in with the new password.');
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : 'Could not reset password.');
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const loginWithProvider = async (
+    provider: SocialProvider,
+    options: {
+      pendingLinkToken?: string;
+      linkPending?: boolean;
+    } = {}
+  ) => {
     setIsBusy(true);
     setSocialProvider(provider);
     setErrorMessage(null);
@@ -200,14 +346,26 @@ export default function HomeScreen() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(callbackParams),
+        body: JSON.stringify({
+          ...callbackParams,
+          provider,
+          pendingLinkToken: options.pendingLinkToken,
+          linkPending: options.linkPending,
+        }),
       }).then((response) => parseJsonResponse<LoginResponse>(response));
 
       await storeSession({
         token: data.sessionToken,
         user: data.user,
       });
+      setPendingLink(null);
     } catch (error) {
+      if (isAccountLinkRequiredError(error)) {
+        setPendingLink(error.data);
+        setErrorMessage(null);
+        return;
+      }
+
       setErrorMessage(error instanceof Error ? error.message : `Could not sign in with ${provider}.`);
     } finally {
       setSocialProvider(null);
@@ -248,114 +406,231 @@ export default function HomeScreen() {
     <SafeAreaView style={styles.screen}>
       <KeyboardAvoidingView
         behavior={Platform.select({ ios: 'padding', default: undefined })}
+        keyboardVerticalOffset={Platform.select({ ios: 12, default: 0 })}
         style={styles.keyboardView}>
-        <View style={styles.header}>
-          <Text style={styles.eyebrow}>Custom Auth</Text>
-          <Text style={styles.title}>Welcome</Text>
-          <Text style={styles.subtitle}>
-            The app collects credentials and sends them to the Hono BFF. The BFF talks to ZITADEL.
-          </Text>
-        </View>
-
-        <View style={styles.panel}>
-          <View style={styles.row}>
-            <Text style={styles.label}>Status</Text>
-            <Text style={[styles.status, isLoggedIn ? styles.statusSignedIn : styles.statusSignedOut]}>
-              {isLoggedIn ? 'Logged in' : 'Logged out'}
+        <ScrollView
+          alwaysBounceVertical={false}
+          contentContainerStyle={styles.scrollContent}
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>Custom Auth</Text>
+            <Text style={styles.title}>Welcome</Text>
+            <Text style={styles.subtitle}>
+              The app collects credentials and sends them to the Hono BFF. The BFF talks to ZITADEL.
             </Text>
           </View>
 
-          <View style={styles.detailBlock}>
-            <Text style={styles.label}>BFF</Text>
-            <Text style={styles.mono}>{bffBaseUrl}</Text>
-          </View>
-
-          {isLoggedIn ? (
-            <View style={styles.detailBlock}>
-              <Text style={styles.label}>User</Text>
-              <Text style={styles.userName}>
-                {session.user?.displayName || session.user?.email || session.user?.loginName}
+          <View style={styles.panel}>
+            <View style={styles.row}>
+              <Text style={styles.label}>Status</Text>
+              <Text style={[styles.status, isLoggedIn ? styles.statusSignedIn : styles.statusSignedOut]}>
+                {isLoggedIn ? 'Logged in' : 'Logged out'}
               </Text>
             </View>
-          ) : (
-            <View style={styles.form}>
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Email or username</Text>
-                <TextInput
-                  autoCapitalize="none"
-                  autoCorrect={false}
-                  keyboardType="email-address"
-                  onChangeText={setLoginName}
-                  placeholder="name@example.com"
-                  placeholderTextColor="#94A3B8"
-                  style={styles.input}
-                  textContentType="username"
-                  value={loginName}
-                />
-              </View>
 
-              <View style={styles.inputGroup}>
-                <Text style={styles.inputLabel}>Password</Text>
-                <TextInput
-                  onChangeText={setPassword}
-                  placeholder="Password"
-                  placeholderTextColor="#94A3B8"
-                  secureTextEntry
-                  style={styles.input}
-                  textContentType="password"
-                  value={password}
-                />
-              </View>
+            <View style={styles.detailBlock}>
+              <Text style={styles.label}>BFF</Text>
+              <Text style={styles.mono}>{bffBaseUrl}</Text>
             </View>
-          )}
 
-          {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+            {isLoggedIn ? (
+              <View style={styles.detailBlock}>
+                <Text style={styles.label}>User</Text>
+                <Text style={styles.userName}>
+                  {session.user?.displayName || session.user?.email || session.user?.loginName}
+                </Text>
+              </View>
+            ) : resetMode === 'request' ? (
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Email or username</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    onChangeText={setResetLoginName}
+                    placeholder="name@example.com"
+                    placeholderTextColor="#94A3B8"
+                    style={styles.input}
+                    textContentType="username"
+                    value={resetLoginName}
+                  />
+                </View>
+              </View>
+            ) : resetMode === 'confirm' ? (
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Reset code</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    onChangeText={setResetCode}
+                    placeholder="Code from email link"
+                    placeholderTextColor="#94A3B8"
+                    style={styles.input}
+                    value={resetCode}
+                  />
+                </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>New password</Text>
+                  <TextInput
+                    onChangeText={setNewPassword}
+                    placeholder="New password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry
+                    style={styles.input}
+                    textContentType="newPassword"
+                    value={newPassword}
+                  />
+                </View>
+              </View>
+            ) : (
+              <View style={styles.form}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Email or username</Text>
+                  <TextInput
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="email-address"
+                    onChangeText={setLoginName}
+                    placeholder="name@example.com"
+                    placeholderTextColor="#94A3B8"
+                    style={styles.input}
+                    textContentType="username"
+                    value={loginName}
+                  />
+                </View>
 
-          {isLoggedIn ? (
-            <Pressable
-              disabled={isBusy}
-              onPress={logout}
-              style={({ pressed }) => [
-                styles.button,
-                styles.secondaryButton,
-                (pressed || isBusy) && styles.buttonPressed,
-              ]}>
-              <Text style={styles.secondaryButtonText}>{isBusy ? 'Signing out...' : 'Logout'}</Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              disabled={!canSubmit}
-              onPress={login}
-              style={({ pressed }) => [
-                styles.button,
-                !canSubmit && styles.buttonDisabled,
-                pressed && styles.buttonPressed,
-              ]}>
-              <Text style={styles.buttonText}>{isBusy ? 'Signing in...' : 'Login'}</Text>
-            </Pressable>
-          )}
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Password</Text>
+                  <TextInput
+                    onChangeText={setPassword}
+                    placeholder="Password"
+                    placeholderTextColor="#94A3B8"
+                    secureTextEntry
+                    style={styles.input}
+                    textContentType="password"
+                    value={password}
+                  />
+                </View>
+                <Pressable disabled={isBusy} onPress={showResetRequest} style={styles.textButton}>
+                  <Text style={styles.textButtonText}>Forgot password?</Text>
+                </Pressable>
+              </View>
+            )}
 
-          {!isLoggedIn ? (
-            <View style={styles.socialActions}>
+            {infoMessage ? <Text style={styles.info}>{infoMessage}</Text> : null}
+            {errorMessage ? <Text style={styles.error}>{errorMessage}</Text> : null}
+
+            {isLoggedIn ? (
               <Pressable
                 disabled={isBusy}
-                onPress={() => loginWithProvider('google')}
-                style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
-                <Text style={styles.socialButtonText}>
-                  {socialProvider === 'google' ? 'Opening Google...' : 'Continue with Google'}
-                </Text>
+                onPress={logout}
+                style={({ pressed }) => [
+                  styles.button,
+                  styles.secondaryButton,
+                  (pressed || isBusy) && styles.buttonPressed,
+                ]}>
+                <Text style={styles.secondaryButtonText}>{isBusy ? 'Signing out...' : 'Logout'}</Text>
               </Pressable>
+            ) : resetMode === 'request' ? (
               <Pressable
-                disabled={isBusy}
-                onPress={() => loginWithProvider('apple')}
-                style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
-                <Text style={styles.socialButtonText}>
-                  {socialProvider === 'apple' ? 'Opening Apple...' : 'Continue with Apple'}
-                </Text>
+                disabled={!canRequestPasswordReset}
+                onPress={requestPasswordReset}
+                style={({ pressed }) => [
+                  styles.button,
+                  !canRequestPasswordReset && styles.buttonDisabled,
+                  pressed && styles.buttonPressed,
+                ]}>
+                <Text style={styles.buttonText}>{isBusy ? 'Sending...' : 'Send reset link'}</Text>
               </Pressable>
-            </View>
-          ) : null}
-        </View>
+            ) : resetMode === 'confirm' ? (
+              <Pressable
+                disabled={!canConfirmPasswordReset}
+                onPress={confirmPasswordReset}
+                style={({ pressed }) => [
+                  styles.button,
+                  !canConfirmPasswordReset && styles.buttonDisabled,
+                  pressed && styles.buttonPressed,
+                ]}>
+                <Text style={styles.buttonText}>{isBusy ? 'Resetting...' : 'Reset password'}</Text>
+              </Pressable>
+            ) : (
+              <Pressable
+                disabled={!canSubmit}
+                onPress={login}
+                style={({ pressed }) => [
+                  styles.button,
+                  !canSubmit && styles.buttonDisabled,
+                  pressed && styles.buttonPressed,
+                ]}>
+                <Text style={styles.buttonText}>{isBusy ? 'Signing in...' : 'Login'}</Text>
+              </Pressable>
+            )}
+
+            {isResettingPassword ? (
+              <Pressable disabled={isBusy} onPress={showLogin} style={styles.secondaryTextButton}>
+                <Text style={styles.textButtonText}>Back to login</Text>
+              </Pressable>
+            ) : null}
+
+            {pendingLink && !isLoggedIn && !isResettingPassword ? (
+              <View style={styles.linkPanel}>
+                <Text style={styles.linkText}>{pendingLink.message}</Text>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={() => loginWithProvider(pendingLink.requiredProvider)}
+                  style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
+                  <Text style={styles.socialButtonText}>
+                    {socialProvider === pendingLink.requiredProvider
+                      ? `Opening ${providerLabel(pendingLink.requiredProvider)}...`
+                      : `Sign in with ${providerLabel(pendingLink.requiredProvider)}`}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={() =>
+                    loginWithProvider(pendingLink.requiredProvider, {
+                      pendingLinkToken: pendingLink.pendingLinkToken,
+                      linkPending: true,
+                    })
+                  }
+                  style={({ pressed }) => [styles.button, (pressed || isBusy) && styles.buttonPressed]}>
+                  <Text style={styles.buttonText}>
+                    {socialProvider === pendingLink.requiredProvider
+                      ? `Opening ${providerLabel(pendingLink.requiredProvider)}...`
+                      : `Sign in with ${providerLabel(pendingLink.requiredProvider)} and link ${providerLabel(
+                          pendingLink.attemptedProvider ?? 'apple'
+                        )}`}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+
+            {!isLoggedIn && !isResettingPassword && !pendingLink ? (
+              <View style={styles.socialActions}>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={() => loginWithProvider('google')}
+                  style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
+                  <Text style={styles.socialButtonText}>
+                    {socialProvider === 'google' ? 'Opening Google...' : 'Continue with Google'}
+                  </Text>
+                </Pressable>
+                <Pressable
+                  disabled={isBusy}
+                  onPress={() => loginWithProvider('apple')}
+                  style={({ pressed }) => [styles.socialButton, (pressed || isBusy) && styles.buttonPressed]}>
+                  <Text style={styles.socialButtonText}>
+                    {socialProvider === 'apple' ? 'Opening Apple...' : 'Continue with Apple'}
+                  </Text>
+                </Pressable>
+              </View>
+            ) : null}
+          </View>
+        </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -371,10 +646,38 @@ function parseSocialCallbackParams(callbackUrl: string) {
       undefined,
     idpIntentToken:
       getFirstParam(params, ['idpIntentToken', 'idp_intent_token', 'idpToken', 'idp_token', 'token']) ?? undefined,
-    userId: getFirstParam(params, ['userId', 'user_id', 'user']) ?? undefined,
     error:
       getFirstParam(params, ['error_description', 'errorDescription', 'error']) ?? getFirstParam(params, ['message']),
   };
+}
+
+function parsePasswordResetParams(callbackUrl: string) {
+  const url = new URL(callbackUrl);
+  const params = getCallbackParams(url);
+
+  return {
+    userId: getFirstParam(params, ['userID', 'userId', 'user_id']) ?? undefined,
+    code: getFirstParam(params, ['code', 'verificationCode', 'verification_code']) ?? undefined,
+  };
+}
+
+function isAccountLinkRequiredError(error: unknown): error is ApiResponseError & { data: AccountLinkRequiredResponse } {
+  return (
+    error instanceof ApiResponseError &&
+    error.status === 409 &&
+    isRecord(error.data) &&
+    error.data.code === 'ACCOUNT_LINK_REQUIRED' &&
+    typeof error.data.pendingLinkToken === 'string' &&
+    (error.data.requiredProvider === 'google' || error.data.requiredProvider === 'apple')
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function providerLabel(provider: SocialProvider) {
+  return provider === 'google' ? 'Google' : 'Apple';
 }
 
 function getCallbackParams(url: URL) {
@@ -411,7 +714,11 @@ const styles = StyleSheet.create({
   },
   keyboardView: {
     flex: 1,
+  },
+  scrollContent: {
+    flexGrow: 1,
     padding: 24,
+    paddingBottom: 48,
   },
   centered: {
     alignItems: 'center',
@@ -534,6 +841,30 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     padding: 12,
   },
+  info: {
+    backgroundColor: '#DBEAFE',
+    borderColor: '#60A5FA',
+    borderRadius: 6,
+    borderWidth: 1,
+    color: '#1E3A8A',
+    lineHeight: 20,
+    padding: 12,
+  },
+  textButton: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    justifyContent: 'center',
+  },
+  secondaryTextButton: {
+    alignItems: 'center',
+    minHeight: 32,
+    justifyContent: 'center',
+  },
+  textButtonText: {
+    color: '#2563EB',
+    fontSize: 14,
+    fontWeight: '700',
+  },
   button: {
     alignItems: 'center',
     backgroundColor: '#2563EB',
@@ -563,6 +894,20 @@ const styles = StyleSheet.create({
   },
   socialActions: {
     gap: 10,
+  },
+  linkPanel: {
+    backgroundColor: '#F8FAFC',
+    borderColor: '#CBD5E1',
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  linkText: {
+    color: '#334155',
+    fontSize: 14,
+    fontWeight: '700',
+    lineHeight: 20,
   },
   socialButton: {
     alignItems: 'center',

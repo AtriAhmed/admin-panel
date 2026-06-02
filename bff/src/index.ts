@@ -26,6 +26,18 @@ type LoginBody = {
   password?: string;
 };
 
+type PasswordResetRequestBody = {
+  loginName?: string;
+  redirectUrl?: string;
+};
+
+type PasswordResetConfirmBody = {
+  resetRequestId?: string;
+  userId?: string;
+  code?: string;
+  newPassword?: string;
+};
+
 type IdpProvider = 'google' | 'apple';
 
 type IdpStartBody = {
@@ -36,7 +48,9 @@ type IdpStartBody = {
 type IdpCompleteBody = {
   idpIntentId?: string;
   idpIntentToken?: string;
-  userId?: string;
+  provider?: IdpProvider;
+  pendingLinkToken?: string;
+  linkPending?: boolean;
 };
 
 type ZitadelCreateSessionResponse = {
@@ -94,6 +108,36 @@ type ZitadelGetSessionResponse = {
   };
 };
 
+type ZitadelPasswordResetResponse = {
+  verificationCode?: string;
+};
+
+type PendingIdpLink = {
+  idpLink: {
+    idpId: string;
+    userId: string;
+    userName: string;
+  };
+  email: string | null;
+  attemptedProvider: IdpProvider | null;
+  requiredProvider: IdpProvider;
+  createdAt: number;
+};
+
+class AccountLinkRequiredError extends Error {
+  code = 'ACCOUNT_LINK_REQUIRED' as const;
+
+  constructor(
+    message: string,
+    readonly pendingLinkToken: string,
+    readonly attemptedProvider: IdpProvider | null,
+    readonly requiredProvider: IdpProvider,
+    readonly email: string | null
+  ) {
+    super(message);
+  }
+}
+
 function loadDotEnv() {
   const envPath = resolve(process.cwd(), '.env');
 
@@ -139,6 +183,8 @@ const idpIds: Partial<Record<IdpProvider, string | undefined>> = {
 };
 
 const sessions = new Map<string, AppSession>();
+const passwordResetRequests = new Map<string, { userId: string; createdAt: number }>();
+const pendingIdpLinks = new Map<string, PendingIdpLink>();
 
 const app = new Hono();
 
@@ -217,7 +263,98 @@ async function createZitadelSession(loginName: string, password: string) {
   };
 }
 
-async function createZitadelSessionFromIdpIntent(idpIntentId: string, idpIntentToken: string, userId?: string) {
+async function resolveUserIdByLoginName(loginName: string) {
+  const createdSession = await zitadelJson<ZitadelCreateSessionResponse>('/v2/sessions', {
+    method: 'POST',
+    body: {
+      checks: {
+        user: {
+          loginName,
+        },
+      },
+    },
+  });
+
+  try {
+    const sessionState = await getZitadelSession(createdSession.sessionId, createdSession.sessionToken);
+    const userId = sessionState.session.factors?.user?.id;
+
+    if (!userId) {
+      throw new Error('ZITADEL did not resolve a user for that login name.');
+    }
+
+    return userId;
+  } finally {
+    deleteZitadelSession(createdSession.sessionId, createdSession.sessionToken).catch(() => undefined);
+  }
+}
+
+async function requestZitadelPasswordReset(loginName: string, redirectUrl: string) {
+  const userId = await resolveUserIdByLoginName(loginName);
+  const separator = redirectUrl.includes('?') ? '&' : '?';
+
+  await zitadelJson<ZitadelPasswordResetResponse>(`/v2/users/${encodeURIComponent(userId)}/password_reset`, {
+    method: 'POST',
+    body: {
+      sendLink: {
+        notificationType: 'NOTIFICATION_TYPE_Email',
+        urlTemplate: `${redirectUrl}${separator}userID={{.UserID}}&code={{.Code}}&orgID={{.OrgID}}`,
+      },
+    },
+  });
+
+  const resetRequestId = nanoid(32);
+  passwordResetRequests.set(resetRequestId, {
+    userId,
+    createdAt: Date.now(),
+  });
+
+  return resetRequestId;
+}
+
+async function confirmZitadelPasswordReset(userId: string, code: string, newPassword: string) {
+  await zitadelJson(`/v2/users/${encodeURIComponent(userId)}/password`, {
+    method: 'POST',
+    body: {
+      newPassword: {
+        password: newPassword,
+        changeRequired: false,
+      },
+      verificationCode: code,
+    },
+  });
+}
+
+function getPasswordResetUserId(resetRequestId: string | undefined) {
+  if (!resetRequestId) {
+    return null;
+  }
+
+  const request = passwordResetRequests.get(resetRequestId);
+
+  if (!request) {
+    return null;
+  }
+
+  const maxAgeMs = 15 * 60 * 1000;
+
+  if (Date.now() - request.createdAt > maxAgeMs) {
+    passwordResetRequests.delete(resetRequestId);
+    return null;
+  }
+
+  return request.userId;
+}
+
+async function createZitadelSessionFromIdpIntent(
+  idpIntentId: string,
+  idpIntentToken: string,
+  options: {
+    provider?: IdpProvider;
+    pendingLinkToken?: string;
+    linkPending?: boolean;
+  } = {}
+) {
   const intent = await zitadelJson<ZitadelRetrieveIdpIntentResponse>(
     `/v2/idp_intents/${encodeURIComponent(idpIntentId)}`,
     {
@@ -227,10 +364,12 @@ async function createZitadelSessionFromIdpIntent(idpIntentId: string, idpIntentT
       },
     }
   );
-  const resolvedUserId = userId || intent.userId || (await createUserFromIdpIntent(intent));
+  const resolvedUserId = intent.userId || (await createUserFromIdpIntent(intent, options.provider));
 
   if (!resolvedUserId) {
-    throw new Error('This social login is not linked to a ZITADEL user yet, and ZITADEL did not return a user creation payload.');
+    throw new Error(
+      'This social login is not linked to a ZITADEL user yet, and ZITADEL did not return a usable user creation payload.'
+    );
   }
 
   const createdSession = await zitadelJson<ZitadelCreateSessionResponse>('/v2/sessions', {
@@ -252,43 +391,183 @@ async function createZitadelSessionFromIdpIntent(idpIntentId: string, idpIntentT
   const sessionUser = sessionState.session.factors?.user;
   const userName = intent.idpInformation?.userName;
   const rawInformation = intent.idpInformation?.rawInformation;
-  const email = getStringFromRecord(rawInformation, 'email');
-  const displayName = getStringFromRecord(rawInformation, 'name') || userName || email || sessionUser?.displayName;
+  const email = getIdentityEmail(intent);
+  const displayName = getIdentityName(intent) || userName || email || sessionUser?.displayName;
+  const user = {
+    id: resolvedUserId,
+    loginName: sessionUser?.loginName || email || userName || resolvedUserId,
+    email: email ?? null,
+    displayName: displayName ?? null,
+  } satisfies AuthUser;
+
+  if (options.linkPending && options.pendingLinkToken) {
+    await linkPendingIdpLogin(resolvedUserId, user, intent, options.pendingLinkToken, options.provider);
+  }
 
   return {
     zitadelSessionId: createdSession.sessionId,
     zitadelSessionToken: createdSession.sessionToken,
-    user: {
-      id: resolvedUserId,
-      loginName: sessionUser?.loginName || email || userName || resolvedUserId,
-      email: email ?? null,
-      displayName: displayName ?? null,
-    } satisfies AuthUser,
+    user,
   };
 }
 
-async function createUserFromIdpIntent(intent: ZitadelRetrieveIdpIntentResponse) {
+async function createUserFromIdpIntent(intent: ZitadelRetrieveIdpIntentResponse, provider?: IdpProvider) {
   if (intent.createUser?.human) {
     const createUserBody = withFallbackHumanProfile(withOrganizationId(removeEmptyStrings(intent.createUser), intent), intent);
-    const response = await zitadelJson<ZitadelCreateUserResponse>('/v2/users/new', {
-      method: 'POST',
-      body: createUserBody,
-    });
+    const response = await createZitadelUserOrRequestLink(createUserBody, '/v2/users/new', intent, provider);
 
-    return response.id ?? response.userId ?? intent.createUser.userId ?? null;
+    return response.id ?? response.userId ?? null;
   }
 
   if (intent.addHumanUser) {
     const addHumanUserBody = withFallbackHumanProfile(removeEmptyStrings(intent.addHumanUser), intent);
-    const response = await zitadelJson<ZitadelCreateUserResponse>('/v2/users/human', {
-      method: 'POST',
-      body: addHumanUserBody,
-    });
+    const response = await createZitadelUserOrRequestLink(addHumanUserBody, '/v2/users/human', intent, provider);
 
-    return response.userId ?? response.id ?? getStringFromRecord(intent.addHumanUser, 'userId');
+    return response.userId ?? response.id ?? null;
   }
 
   return null;
+}
+
+async function createZitadelUserOrRequestLink(
+  body: unknown,
+  path: '/v2/users/new' | '/v2/users/human',
+  intent: ZitadelRetrieveIdpIntentResponse,
+  provider?: IdpProvider
+) {
+  try {
+    return await zitadelJson<ZitadelCreateUserResponse>(path, {
+      method: 'POST',
+      body,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : '';
+
+    if (/user already exists/i.test(message)) {
+      throw createAccountLinkRequiredError(intent, provider);
+    }
+
+    throw error;
+  }
+}
+
+function createAccountLinkRequiredError(intent: ZitadelRetrieveIdpIntentResponse, provider?: IdpProvider) {
+  const idpLink = getIdpLinkFromIntent(intent);
+  const attemptedProvider = provider ?? getProviderFromIdpId(idpLink?.idpId);
+  const requiredProvider = attemptedProvider === 'apple' ? 'google' : 'apple';
+  const pendingLinkToken = nanoid(40);
+  const email = getIdentityEmail(intent);
+
+  if (!idpLink) {
+    return new Error('This email is already linked to another sign-in method. Use the original sign-in method.');
+  }
+
+  pendingIdpLinks.set(pendingLinkToken, {
+    idpLink,
+    email,
+    attemptedProvider,
+    requiredProvider,
+    createdAt: Date.now(),
+  });
+
+  return new AccountLinkRequiredError(
+    `This email is already linked to ${providerLabel(requiredProvider)}. Sign in with ${providerLabel(requiredProvider)} to continue.`,
+    pendingLinkToken,
+    attemptedProvider,
+    requiredProvider,
+    email
+  );
+}
+
+function getIdpLinkFromIntent(intent: ZitadelRetrieveIdpIntentResponse): PendingIdpLink['idpLink'] | null {
+  const idpId = intent.idpInformation?.idpId;
+  const rawInformation = intent.idpInformation?.rawInformation;
+  const externalUserId =
+    intent.idpInformation?.userId ||
+    getStringFromRecord(rawInformation, 'sub') ||
+    getStringFromRecord(rawInformation, 'id');
+  const userName = intent.idpInformation?.userName || getIdentityName(intent) || getIdentityEmail(intent) || externalUserId;
+
+  if (!idpId || !externalUserId || !userName) {
+    return null;
+  }
+
+  return {
+    idpId,
+    userId: externalUserId,
+    userName,
+  };
+}
+
+async function linkPendingIdpLogin(
+  userId: string,
+  user: AuthUser,
+  authenticatedIntent: ZitadelRetrieveIdpIntentResponse,
+  pendingLinkToken: string,
+  provider?: IdpProvider
+) {
+  const pending = getPendingIdpLink(pendingLinkToken);
+
+  if (!pending) {
+    throw new Error('The account link request expired. Try signing in again.');
+  }
+
+  const authenticatedProvider = provider ?? getProviderFromIdpId(authenticatedIntent.idpInformation?.idpId);
+
+  if (authenticatedProvider && authenticatedProvider !== pending.requiredProvider) {
+    throw new Error(`Use ${providerLabel(pending.requiredProvider)} to link this account.`);
+  }
+
+  const authenticatedEmail = user.email || getIdentityEmail(authenticatedIntent) || user.loginName;
+
+  if (pending.email && authenticatedEmail && pending.email.toLowerCase() !== authenticatedEmail.toLowerCase()) {
+    throw new Error('The sign-in account does not match the account being linked.');
+  }
+
+  await zitadelJson(`/v2/users/${encodeURIComponent(userId)}/links`, {
+    method: 'POST',
+    body: {
+      idpLink: pending.idpLink,
+    },
+  });
+  pendingIdpLinks.delete(pendingLinkToken);
+}
+
+function getPendingIdpLink(pendingLinkToken: string) {
+  const pending = pendingIdpLinks.get(pendingLinkToken);
+
+  if (!pending) {
+    return null;
+  }
+
+  const maxAgeMs = 10 * 60 * 1000;
+
+  if (Date.now() - pending.createdAt > maxAgeMs) {
+    pendingIdpLinks.delete(pendingLinkToken);
+    return null;
+  }
+
+  return pending;
+}
+
+function getProviderFromIdpId(idpId: string | undefined): IdpProvider | null {
+  if (!idpId) {
+    return null;
+  }
+
+  if (idpIds.google === idpId) {
+    return 'google';
+  }
+
+  if (idpIds.apple === idpId) {
+    return 'apple';
+  }
+
+  return null;
+}
+
+function providerLabel(provider: IdpProvider) {
+  return provider === 'google' ? 'Google' : 'Apple';
 }
 
 function withOrganizationId<T extends { organizationId?: string }>(body: T, intent: ZitadelRetrieveIdpIntentResponse): T {
@@ -325,10 +604,9 @@ function withFallbackHumanProfile<T>(body: T, intent: ZitadelRetrieveIdpIntentRe
 
 function getFallbackProfile(intent: ZitadelRetrieveIdpIntentResponse) {
   const rawInformation = intent.idpInformation?.rawInformation;
-  const email = getStringFromRecord(rawInformation, 'email');
+  const email = getIdentityEmail(intent);
   const fullName =
-    getStringFromRecord(rawInformation, 'name') ||
-    getStringFromRecord(rawInformation, 'fullName') ||
+    getIdentityName(intent) ||
     intent.idpInformation?.userName ||
     email ||
     'Apple User';
@@ -382,10 +660,42 @@ function removeEmptyStrings<T>(value: T): T {
   ) as T;
 }
 
-function getStringFromRecord(record: Record<string, unknown> | undefined, key: string) {
-  const value = record?.[key];
+function getIdentityEmail(intent: ZitadelRetrieveIdpIntentResponse) {
+  return getStringFromRecord(intent.idpInformation?.rawInformation, 'email');
+}
 
-  return typeof value === 'string' && value.trim() ? value : null;
+function getIdentityName(intent: ZitadelRetrieveIdpIntentResponse) {
+  const rawInformation = intent.idpInformation?.rawInformation;
+
+  return (
+    getStringFromRecord(rawInformation, 'name') ||
+    getStringFromRecord(rawInformation, 'fullName') ||
+    getStringFromRecord(rawInformation, 'given_name')
+  );
+}
+
+function getStringFromRecord(record: Record<string, unknown> | undefined, key: string): string | null {
+  if (!record) {
+    return null;
+  }
+
+  const value = record[key];
+
+  if (typeof value === 'string' && value.trim()) {
+    return value;
+  }
+
+  for (const nestedValue of Object.values(record)) {
+    if (nestedValue && typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
+      const nestedMatch: string | null = getStringFromRecord(nestedValue as Record<string, unknown>, key);
+
+      if (nestedMatch) {
+        return nestedMatch;
+      }
+    }
+  }
+
+  return null;
 }
 
 function createAppSession(user: AuthUser, zitadelSessionId: string, zitadelSessionToken: string) {
@@ -489,6 +799,59 @@ app.post('/auth/login', async (c) => {
   }
 });
 
+app.post('/auth/password-reset/request', async (c) => {
+  const body = await c.req.json<PasswordResetRequestBody>().catch(() => null);
+  const loginName = body?.loginName?.trim();
+  const redirectUrl = body?.redirectUrl?.trim();
+
+  if (!loginName || !redirectUrl) {
+    return c.json({ message: 'loginName and redirectUrl are required.' }, 400);
+  }
+
+  try {
+    const resetRequestId = await requestZitadelPasswordReset(loginName, redirectUrl);
+    return c.json({
+      ok: true,
+      resetRequestId,
+      message: 'If that account exists, a password reset link has been sent.',
+    });
+  } catch (error) {
+    console.warn(error instanceof Error ? error.message : 'Could not request password reset.');
+  }
+
+  return c.json({
+    ok: true,
+    message: 'If that account exists, a password reset link has been sent.',
+  });
+});
+
+app.post('/auth/password-reset/confirm', async (c) => {
+  const body = await c.req.json<PasswordResetConfirmBody>().catch(() => null);
+  const resetRequestId = body?.resetRequestId?.trim();
+  const userId = body?.userId?.trim() || getPasswordResetUserId(resetRequestId);
+  const code = body?.code?.trim();
+  const newPassword = body?.newPassword;
+
+  if (!userId || !code || !newPassword) {
+    return c.json({ message: 'userId, code, and newPassword are required.' }, 400);
+  }
+
+  try {
+    await confirmZitadelPasswordReset(userId, code, newPassword);
+    if (resetRequestId) {
+      passwordResetRequests.delete(resetRequestId);
+    }
+    return c.json({ ok: true });
+  } catch (error) {
+    return c.json(
+      {
+        message: error instanceof Error ? error.message : 'Could not reset password.',
+      },
+      400
+    );
+  }
+});
+
 app.post('/auth/idp/start', async (c) => {
   const body = await c.req.json<IdpStartBody>().catch(() => null);
   const provider = body?.provider;
@@ -535,7 +898,9 @@ app.post('/auth/idp/complete', async (c) => {
   const body = await c.req.json<IdpCompleteBody>().catch(() => null);
   const idpIntentId = body?.idpIntentId?.trim();
   const idpIntentToken = body?.idpIntentToken?.trim();
-  const userId = body?.userId?.trim();
+  const provider = body?.provider;
+  const pendingLinkToken = body?.pendingLinkToken?.trim();
+  const linkPending = body?.linkPending === true;
 
   if (!idpIntentId || !idpIntentToken) {
     return c.json({ message: 'idpIntentId and idpIntentToken are required.' }, 400);
@@ -545,11 +910,29 @@ app.post('/auth/idp/complete', async (c) => {
     const { user, zitadelSessionId, zitadelSessionToken } = await createZitadelSessionFromIdpIntent(
       idpIntentId,
       idpIntentToken,
-      userId
+      {
+        provider,
+        pendingLinkToken,
+        linkPending,
+      }
     );
 
     return c.json(createAppSession(user, zitadelSessionId, zitadelSessionToken));
   } catch (error) {
+    if (error instanceof AccountLinkRequiredError) {
+      return c.json(
+        {
+          code: error.code,
+          message: error.message,
+          pendingLinkToken: error.pendingLinkToken,
+          attemptedProvider: error.attemptedProvider,
+          requiredProvider: error.requiredProvider,
+          email: error.email,
+        },
+        409
+      );
+    }
+
     return c.json(
       {
         message: error instanceof Error ? error.message : 'Could not complete social login.',
