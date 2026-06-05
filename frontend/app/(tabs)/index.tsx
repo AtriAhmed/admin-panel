@@ -18,7 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 const bffBaseUrl =
   process.env.EXPO_PUBLIC_BFF_URL ??
-  (Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://192.168.1.105:8787');
+  (Platform.OS === 'web' || !Device.isDevice ? 'http://localhost:8787' : 'http://10.11.19.254:8787');
 const socialRedirectUrl = Linking.createURL('auth/idp/callback');
 const passwordResetRedirectUrl = Linking.createURL('password/reset');
 
@@ -27,6 +27,7 @@ WebBrowser.maybeCompleteAuthSession();
 const sessionKeys = {
   token: 'zitadel-custom-auth.bff_session_token',
   user: 'zitadel-custom-auth.user',
+  passkeyDevicePrefix: 'zitadel-custom-auth.passkey_device.',
 };
 
 async function getStoredItem(key: string) {
@@ -136,6 +137,7 @@ export default function HomeScreen() {
   const [newPassword, setNewPassword] = useState('');
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [session, setSession] = useState<StoredSession>({ token: null, user: null });
+  const [hasDevicePasskey, setHasDevicePasskey] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isBusy, setIsBusy] = useState(false);
   const [socialProvider, setSocialProvider] = useState<SocialProvider | null>(null);
@@ -158,6 +160,21 @@ export default function HomeScreen() {
     newPassword.length > 0 &&
     !isBusy;
 
+  const loadDevicePasskeyState = useCallback(async (userId: string | null | undefined) => {
+    if (!userId) {
+      setHasDevicePasskey(false);
+      return;
+    }
+
+    const marker = await getStoredItem(getPasskeyDeviceKey(userId));
+    setHasDevicePasskey(marker === 'true');
+  }, []);
+
+  const markDevicePasskeyAdded = useCallback(async (userId: string) => {
+    await setStoredItem(getPasskeyDeviceKey(userId), 'true');
+    setHasDevicePasskey(true);
+  }, []);
+
   const storeSession = useCallback(async (nextSession: StoredSession) => {
     await Promise.all([
       nextSession.token
@@ -169,19 +186,22 @@ export default function HomeScreen() {
     ]);
 
     setSession(nextSession);
-  }, []);
+    await loadDevicePasskeyState(nextSession.user?.id);
+  }, [loadDevicePasskeyState]);
 
   const loadStoredSession = useCallback(async () => {
     const [token, userJson] = await Promise.all([
       getStoredItem(sessionKeys.token),
       getStoredItem(sessionKeys.user),
     ]);
+    const user = userJson ? (JSON.parse(userJson) as AuthUser) : null;
 
     setSession({
       token,
-      user: userJson ? (JSON.parse(userJson) as AuthUser) : null,
+      user,
     });
-  }, []);
+    await loadDevicePasskeyState(user?.id);
+  }, [loadDevicePasskeyState]);
 
   useEffect(() => {
     loadStoredSession()
@@ -392,6 +412,11 @@ export default function HomeScreen() {
       return;
     }
 
+    if (!session.user) {
+      setErrorMessage('Could not find the signed-in user.');
+      return;
+    }
+
     setIsBusy(true);
     setPasskeyAction('register');
     setErrorMessage(null);
@@ -436,8 +461,13 @@ export default function HomeScreen() {
         }),
       }).then((response) => parseJsonResponse<{ ok: true }>(response));
 
+      await markDevicePasskeyAdded(session.user.id);
       setInfoMessage('Passkey added. You can use it next time you sign in.');
     } catch (error) {
+      if (session.user?.id && isLocalDuplicatePasskeyError(error)) {
+        await markDevicePasskeyAdded(session.user.id);
+      }
+
       setErrorMessage(formatPasskeyError(error, 'register'));
     } finally {
       setPasskeyAction(null);
@@ -654,14 +684,19 @@ export default function HomeScreen() {
             {isLoggedIn ? (
               <View style={styles.authenticatedActions}>
                 <Pressable
-                  disabled={isBusy}
+                  disabled={isBusy || hasDevicePasskey}
                   onPress={registerPasskey}
                   style={({ pressed }) => [
                     styles.button,
-                    (pressed || passkeyAction === 'register') && styles.buttonPressed,
+                    hasDevicePasskey && styles.buttonDisabled,
+                    (pressed || passkeyAction === 'register') && !hasDevicePasskey && styles.buttonPressed,
                   ]}>
                   <Text style={styles.buttonText}>
-                    {passkeyAction === 'register' ? 'Adding passkey...' : 'Add passkey'}
+                    {hasDevicePasskey
+                      ? 'Passkey already added'
+                      : passkeyAction === 'register'
+                        ? 'Adding passkey...'
+                        : 'Add passkey'}
                   </Text>
                 </Pressable>
                 <Pressable
@@ -832,12 +867,22 @@ function providerLabel(provider: SocialProvider) {
   return provider === 'google' ? 'Google' : 'Apple';
 }
 
+function getPasskeyDeviceKey(userId: string) {
+  return `${sessionKeys.passkeyDevicePrefix}${userId}`;
+}
+
 async function getPasskeysModule() {
   return import('react-native-passkeys');
 }
 
 function unwrapPublicKeyOptions(options: Record<string, unknown>) {
   return isRecord(options.publicKey) ? options.publicKey : options;
+}
+
+function isLocalDuplicatePasskeyError(error: unknown) {
+  const message = error instanceof Error ? error.message : '';
+
+  return message.includes('InvalidStateError') && message.includes('excluded credentials');
 }
 
 function formatPasskeyError(error: unknown, action: PasskeyAction) {
@@ -847,6 +892,20 @@ function formatPasskeyError(error: unknown, action: PasskeyAction) {
     return action === 'register'
       ? 'This device already has a passkey for this account.'
       : 'No matching passkey was found for this account on this device.';
+  }
+
+  if (message.includes('No create options available')) {
+    return 'Android cannot create a passkey for this app and domain yet. Check Digital Asset Links, reinstall the app, and use a device or emulator with Google Play Services and a screen lock.';
+  }
+
+  if (message.includes('InvalidStateError') && message.includes('excluded credentials')) {
+    return 'This device already has a passkey for this account.';
+  }
+
+  if (message.includes('UserCancelled')) {
+    return action === 'login'
+      ? 'Passkey sign-in was cancelled. If no prompt appeared, try again or test on a real Android device.'
+      : 'Passkey creation was cancelled.';
   }
 
   return message || (action === 'register' ? 'Could not add passkey.' : 'Could not sign in with passkey.');

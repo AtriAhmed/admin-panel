@@ -175,7 +175,36 @@ For Android, the same domain must host:
 https://YOUR_PASSKEY_DOMAIN/.well-known/assetlinks.json
 ```
 
-with the app package name and signing certificate fingerprint.
+with the app package name and signing certificate fingerprint:
+
+```json
+[
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls",
+      "delegate_permission/common.get_login_creds"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.ahmedatri.zitadel_custom_auth",
+      "sha256_cert_fingerprints": ["YOUR:ANDROID:SIGNING:CERT:SHA256"]
+    }
+  }
+]
+```
+
+The Android package is pinned in `frontend/app.json` as:
+
+```json
+"package": "com.ahmedatri.zitadel_custom_auth"
+```
+
+For an EAS development build, get the SHA-256 fingerprint with:
+
+```bash
+cd frontend
+npx eas-cli@latest credentials -p android
+```
 
 The BFF `ZITADEL_PASSKEY_DOMAIN` value must match this domain.
 
