@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   Button,
   Checkbox,
@@ -15,6 +16,13 @@ import {
 } from "@heroui/react";
 
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import {
+  credentialToJson,
+  formatPasskeyError,
+  isDuplicatePasskeyError,
+  isWebAuthnSupported,
+  toPublicKeyCreationOptions,
+} from "@/lib/auth/webauthn";
 
 const provinces = [
   { id: "on", label: "Ontario" },
@@ -31,7 +39,89 @@ const currencies = [
   { id: "mxn", label: "MXN - Mexican Peso" },
 ] as const;
 
-export function SettingsPage() {
+export function SettingsPage({ userId }: { userId: string }) {
+  const [passkeyMessage, setPasskeyMessage] = useState<string | null>(null);
+  const [passkeyError, setPasskeyError] = useState<string | null>(null);
+  const [hasPasskey, setHasPasskey] = useState(false);
+  const [isAddingPasskey, setIsAddingPasskey] = useState(false);
+  const passkeyStorageKey = useMemo(
+    () =>
+      typeof window === "undefined"
+        ? null
+        : `admin-panel.passkey.${window.location.hostname}.${userId}`,
+    [userId],
+  );
+
+  useEffect(() => {
+    if (!passkeyStorageKey) {
+      return;
+    }
+
+    setHasPasskey(window.localStorage.getItem(passkeyStorageKey) === "true");
+  }, [passkeyStorageKey]);
+
+  const markPasskeyAdded = () => {
+    if (passkeyStorageKey) {
+      window.localStorage.setItem(passkeyStorageKey, "true");
+    }
+
+    setHasPasskey(true);
+  };
+
+  const addPasskey = async () => {
+    setIsAddingPasskey(true);
+    setPasskeyMessage(null);
+    setPasskeyError(null);
+
+    try {
+      if (!isWebAuthnSupported()) {
+        throw new Error("Passkeys are not supported in this browser.");
+      }
+
+      const start = await fetch("/api/auth/passkeys/register/start", {
+        method: "POST",
+      }).then((response) =>
+        parseApiResponse<{
+          passkeyId: string;
+          publicKeyCredentialCreationOptions: Record<string, unknown>;
+        }>(response),
+      );
+
+      const credential = (await navigator.credentials.create({
+        publicKey: toPublicKeyCreationOptions(start.publicKeyCredentialCreationOptions),
+      })) as PublicKeyCredential | null;
+
+      if (!credential) {
+        throw new Error("Passkey creation was cancelled.");
+      }
+
+      await fetch("/api/auth/passkeys/register/verify", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          passkeyId: start.passkeyId,
+          passkeyName: `${navigator.platform || "Browser"} passkey`,
+          publicKeyCredential: credentialToJson(credential),
+        }),
+      }).then((response) => parseApiResponse<{ ok: true }>(response));
+
+      setPasskeyMessage("Passkey added. You can use it next time you sign in.");
+      markPasskeyAdded();
+    } catch (caught) {
+      if (isDuplicatePasskeyError(caught)) {
+        markPasskeyAdded();
+        setPasskeyMessage("This browser already has a passkey for this account.");
+        return;
+      }
+
+      setPasskeyError(formatPasskeyError(caught, "register"));
+    } finally {
+      setIsAddingPasskey(false);
+    }
+  };
+
   return (
     <form className="mx-auto flex max-w-5xl flex-col gap-4 px-5 pb-10 pt-4">
       <p className="text-muted text-sm">
@@ -162,6 +252,35 @@ export function SettingsPage() {
 
       <Separator />
 
+      <SettingsRow
+        description="Add a browser passkey for this admin account."
+        label="Passkey"
+      >
+        <div className="flex flex-col gap-3">
+          {hasPasskey ? (
+            <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+              Passkey already added for this browser.
+            </div>
+          ) : (
+            <Button isDisabled={isAddingPasskey} onPress={addPasskey} type="button">
+              {isAddingPasskey ? "Adding passkey..." : "Add passkey"}
+            </Button>
+          )}
+          {passkeyMessage ? (
+            <p className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
+              {passkeyMessage}
+            </p>
+          ) : null}
+          {passkeyError ? (
+            <p className="rounded-md border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+              {passkeyError}
+            </p>
+          ) : null}
+        </div>
+      </SettingsRow>
+
+      <Separator />
+
       <footer className="flex items-center justify-end gap-2 pt-2">
         <Button type="reset" variant="ghost">
           Reset
@@ -170,6 +289,18 @@ export function SettingsPage() {
       </footer>
     </form>
   );
+}
+
+async function parseApiResponse<T>(response: Response) {
+  const data = (await response.json().catch(() => null)) as
+    | (T & { message?: string })
+    | null;
+
+  if (!response.ok) {
+    throw new Error(data?.message ?? `Request failed with status ${response.status}.`);
+  }
+
+  return data as T;
 }
 
 interface SettingsRowProps {

@@ -11,7 +11,11 @@ import { footerItems, navItems } from "../nav-items";
 import { DashboardNavbar } from "./dashboard-navbar";
 import { DashboardSidebar } from "./dashboard-sidebar";
 
-const homeGreeting = "Good morning, Kate";
+type ShellUser = {
+  displayName?: string | null;
+  email?: string | null;
+  loginName: string;
+};
 
 const routeLabels = new Map<string, string>(
   [...navItems, ...footerItems].map((item) => [item.href, item.label]),
@@ -20,11 +24,14 @@ const routeLabels = new Map<string, string>(
 export interface AppShellProps {
   basePath?: string;
   children: ReactNode;
+  user?: ShellUser;
 }
 
-export function AppShell({ basePath = "", children }: AppShellProps) {
+export function AppShell({ basePath = "", children, user }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const userName = user?.displayName || user?.email || user?.loginName || "Admin";
+  const homeGreeting = `Good morning, ${userName.split(" ")[0] || "Admin"}`;
 
   const navigate = useCallback(
     (href: string) => router.push(basePath + href),
@@ -43,7 +50,7 @@ export function AppShell({ basePath = "", children }: AppShellProps) {
     <AppLayout
       navbar={<DashboardNavbar title={title} />}
       navigate={navigate}
-      sidebar={<DashboardSidebar basePath={basePath} pathname={pathname} />}
+      sidebar={<DashboardSidebar basePath={basePath} pathname={pathname} user={user} />}
       sidebarCollapsible="offcanvas"
     >
       {children}

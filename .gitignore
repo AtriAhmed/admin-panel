@@ -24,6 +24,9 @@
 .DS_Store
 *.pem
 
+# sibling/embedded auth app checkout
+/expo-zitadel-custom-auth/
+
 # debug
 npm-debug.log*
 yarn-debug.log*

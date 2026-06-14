@@ -11,12 +11,18 @@ interface DashboardSidebarProps {
   basePath: string;
   disableNavigation?: boolean;
   pathname: string;
+  user?: {
+    displayName?: string | null;
+    email?: string | null;
+    loginName: string;
+  };
 }
 
 export function DashboardSidebar({
   basePath,
   disableNavigation = false,
   pathname,
+  user,
 }: DashboardSidebarProps) {
   return (
     <>
@@ -25,6 +31,7 @@ export function DashboardSidebar({
           basePath={basePath}
           disableNavigation={disableNavigation}
           pathname={pathname}
+          user={user}
         />
       </Sidebar>
       <Sidebar.Mobile>
@@ -33,6 +40,7 @@ export function DashboardSidebar({
           disableNavigation={disableNavigation}
           idPrefix="mobile-"
           pathname={pathname}
+          user={user}
         />
       </Sidebar.Mobile>
     </>
@@ -44,6 +52,11 @@ interface SidebarContentsProps {
   disableNavigation: boolean;
   idPrefix?: string;
   pathname: string;
+  user?: {
+    displayName?: string | null;
+    email?: string | null;
+    loginName: string;
+  };
 }
 
 function SidebarContents({
@@ -51,21 +64,25 @@ function SidebarContents({
   disableNavigation,
   idPrefix = "",
   pathname,
+  user,
 }: SidebarContentsProps) {
+  const name = user?.displayName || user?.email || user?.loginName || "Admin";
+  const fallback = getInitials(name);
+
   return (
     <>
       <Sidebar.Header>
         <div className="flex items-center gap-3 px-1 py-1">
           <Avatar className="size-9">
             <Avatar.Image
-              alt="Kate Moore"
+              alt={name}
               src="https://heroui-assets.nyc3.cdn.digitaloceanspaces.com/avatars/blue-light.jpg"
             />
-            <Avatar.Fallback>KM</Avatar.Fallback>
+            <Avatar.Fallback>{fallback}</Avatar.Fallback>
           </Avatar>
           <div className="flex min-w-0 flex-col" data-sidebar="label">
             <span className="text-foreground text-sm font-medium leading-tight">
-              Kate Moore
+              {name}
             </span>
             <span className="text-muted text-xs font-medium leading-tight">
               Admin
@@ -105,6 +122,17 @@ function SidebarContents({
       </Sidebar.Footer>
     </>
   );
+}
+
+function getInitials(name: string) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "A";
 }
 
 interface SidebarNavItemProps {
