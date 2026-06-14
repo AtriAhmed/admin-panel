@@ -17,9 +17,10 @@ import type {
 
 async function startZitadelPasskeyRegistration(
   userId: string,
-  authenticator: PasskeyRegisterStartBody['authenticator'] = 'platform'
+  authenticator: PasskeyRegisterStartBody['authenticator'] = 'platform',
+  requestedDomain?: string
 ) {
-  assertPasskeyDomain();
+  const domain = resolvePasskeyDomain(requestedDomain);
 
   const registration = await zitadelJson<ZitadelRegisterPasskeyResponse>(
     `/v2/users/${encodeURIComponent(userId)}/passkeys`,
@@ -27,7 +28,7 @@ async function startZitadelPasskeyRegistration(
       method: 'POST',
       body: {
         authenticator: toZitadelPasskeyAuthenticator(authenticator),
-        domain: config.passkeyDomain,
+        domain,
       },
     }
   );
@@ -73,8 +74,8 @@ async function verifyZitadelPasskeyRegistration(
   });
 }
 
-async function startZitadelPasskeyLogin(loginName: string) {
-  assertPasskeyDomain();
+async function startZitadelPasskeyLogin(loginName: string, requestedDomain?: string) {
+  const domain = resolvePasskeyDomain(requestedDomain);
 
   const createdSession = await zitadelJson<ZitadelSessionWebAuthNChallengeResponse>('/v2/sessions', {
     method: 'POST',
@@ -86,7 +87,7 @@ async function startZitadelPasskeyLogin(loginName: string) {
       },
       challenges: {
         webAuthN: {
-          domain: config.passkeyDomain,
+          domain,
           userVerificationRequirement: 'USER_VERIFICATION_REQUIREMENT_REQUIRED',
         },
       },
@@ -175,10 +176,30 @@ function getPendingPasskeyLogin(passkeyLoginToken: string) {
   return pendingLogin;
 }
 
-function assertPasskeyDomain() {
-  if (!config.passkeyDomain) {
+function resolvePasskeyDomain(requestedDomain?: string) {
+  const normalizedRequestedDomain = requestedDomain?.trim().toLowerCase();
+  const defaultDomain = config.passkeyDomain?.trim().toLowerCase();
+  const allowedDomains = new Set(config.passkeyAllowedDomains.map((domain) => domain.trim().toLowerCase()));
+
+  if (!defaultDomain && !allowedDomains.size) {
     throw new Error('ZITADEL_PASSKEY_DOMAIN is not configured.');
   }
+
+  if (!normalizedRequestedDomain) {
+    const fallbackDomain = defaultDomain || [...allowedDomains][0];
+
+    if (!fallbackDomain) {
+      throw new Error('ZITADEL_PASSKEY_DOMAIN is not configured.');
+    }
+
+    return fallbackDomain;
+  }
+
+  if (!allowedDomains.has(normalizedRequestedDomain)) {
+    throw new Error(`Passkey domain ${normalizedRequestedDomain} is not allowed.`);
+  }
+
+  return normalizedRequestedDomain;
 }
 
 function toZitadelPasskeyAuthenticator(authenticator: PasskeyRegisterStartBody['authenticator']) {
@@ -204,7 +225,7 @@ export function registerPasskeyRoutes(app: Hono) {
     const body = await c.req.json<PasskeyRegisterStartBody>().catch(() => null);
 
     try {
-      const registration = await startZitadelPasskeyRegistration(session.user.id, body?.authenticator);
+      const registration = await startZitadelPasskeyRegistration(session.user.id, body?.authenticator, body?.domain);
 
       return c.json({
         passkeyId: registration.passkeyId,
@@ -258,7 +279,7 @@ export function registerPasskeyRoutes(app: Hono) {
     }
 
     try {
-      const challenge = await startZitadelPasskeyLogin(loginName);
+      const challenge = await startZitadelPasskeyLogin(loginName, body?.domain);
       return c.json(challenge);
     } catch (error) {
       console.warn('[passkey login start failed]', {

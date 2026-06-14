@@ -32,6 +32,7 @@ export type PasswordResetConfirmBody = {
 
 export type PasskeyRegisterStartBody = {
   authenticator?: 'platform' | 'crossPlatform' | 'unspecified';
+  domain?: string;
 };
 
 export type PasskeyRegisterVerifyBody = {
@@ -42,6 +43,7 @@ export type PasskeyRegisterVerifyBody = {
 
 export type PasskeyLoginStartBody = {
   loginName?: string;
+  domain?: string;
 };
 
 export type PasskeyLoginVerifyBody = {

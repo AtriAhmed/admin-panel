@@ -42,6 +42,13 @@ export const config = {
   zitadelServiceToken: process.env.ZITADEL_SERVICE_TOKEN,
   zitadelOrganizationId: process.env.ZITADEL_ORGANIZATION_ID,
   passkeyDomain: process.env.ZITADEL_PASSKEY_DOMAIN || process.env.PASSKEY_DOMAIN,
+  passkeyAllowedDomains: [
+    process.env.ZITADEL_PASSKEY_DOMAIN || process.env.PASSKEY_DOMAIN,
+    ...(process.env.ZITADEL_PASSKEY_ALLOWED_DOMAINS || process.env.PASSKEY_ALLOWED_DOMAINS || '')
+      .split(',')
+      .map((domain) => domain.trim())
+      .filter(Boolean),
+  ].filter((domain): domain is string => Boolean(domain)),
   idpIds: {
     google: process.env.ZITADEL_GOOGLE_IDP_ID,
     apple: process.env.ZITADEL_APPLE_IDP_ID,
