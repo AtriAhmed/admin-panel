@@ -1,0 +1,52 @@
+{
+  "name": "@heroui-pro/template-dashboard",
+  "private": true,
+  "version": "1.0.8",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev --port 3003",
+    "build": "next build",
+    "start": "next start --port 3003",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf .next node_modules .turbo dist"
+  },
+  "exports": {
+    "./src/*": "./src/*.tsx",
+    "./src/data/*": "./src/data/*.ts",
+    "./src/nav-items": "./src/nav-items.ts"
+  },
+  "dependencies": {
+    "@gravity-ui/icons": "2.18.0",
+    "@heroui-pro/react": "latest",
+    "@heroui/react": "3.1.0",
+    "@heroui/styles": "3.1.0",
+    "@internationalized/date": "3.12.1",
+    "@internationalized/number": "3.6.6",
+    "@react-aria/utils": "3.34.0",
+    "@react-stately/utils": "3.12.0",
+    "marked": "18.0.4",
+    "next": "16.2.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "react-markdown": "10.1.0",
+    "recharts": "3.8.0",
+    "remark-breaks": "4.0.0",
+    "remark-gfm": "4.0.1",
+    "shiki": "4.0.2",
+    "streamdown": "2.5.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.2.2",
+    "@types/node": "24.7.1",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "postcss": "8.5.9",
+    "tailwindcss": "4.2.2",
+    "typescript": "5.9.3",
+    "@eslint/eslintrc": "^3.2.0",
+    "eslint-config-next": "16.2.6",
+    "eslint": "^9.0.0"
+  }
+}
