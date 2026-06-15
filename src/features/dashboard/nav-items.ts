@@ -7,7 +7,6 @@ import {
   Gear,
   House,
   ListCheck,
-  Palette,
   Receipt,
 } from "@gravity-ui/icons";
 
@@ -23,7 +22,6 @@ export const navItems: readonly NavItem[] = [
   { href: "/orders", icon: Receipt, label: "Orders" },
   { badge: "New", href: "/tracker", icon: ListCheck, label: "Tracker" },
   { href: "/analytics", icon: ChartColumn, label: "Analytics" },
-  { href: "/theme-builder", icon: Palette, label: "Theme Builder" },
   { href: "/settings", icon: Gear, label: "Settings" },
 ];
 

@@ -5,7 +5,16 @@ import { useCallback, useEffect, useMemo } from "react";
 
 const storageKey = "admin-panel-theme-v2";
 
-export const appThemes = ["light", "dark", "glass-light", "glass-dark", "mouve-light", "mouve-dark"];
+export const appThemes = [
+  "light",
+  "dark",
+  "glass-light",
+  "glass-dark",
+  "mouve-light",
+  "mouve-dark",
+  "imported",
+  "imported-dark",
+];
 
 type AppThemeContextValue = {
   resolvedTheme?: string;
@@ -36,7 +45,12 @@ function AppThemeColorScheme() {
   const activeTheme = resolvedTheme ?? theme ?? "light";
 
   useEffect(() => {
-    document.documentElement.style.colorScheme = activeTheme.includes("dark") ? "dark" : "light";
+    const isDarkTheme = activeTheme.includes("dark");
+    const root = document.documentElement;
+
+    root.classList.toggle("dark", isDarkTheme);
+    root.classList.toggle("light", !isDarkTheme);
+    root.style.colorScheme = isDarkTheme ? "dark" : "light";
   }, [activeTheme]);
 
   return null;

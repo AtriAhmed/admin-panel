@@ -244,7 +244,7 @@ export function SettingsPage({ userId }: { userId: string }) {
       <Separator />
 
       <SettingsRow
-        description="Choose the base HeroUI theme or preview Pro theme variants."
+        description="Choose the base HeroUI theme or import a HeroUI theme builder export."
         label="Theme"
       >
         <ThemeSwitcher />

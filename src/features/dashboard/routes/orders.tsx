@@ -1,10 +1,10 @@
 import { ProtectedAppShell } from "@/features/dashboard/components/protected-app-shell";
-import { ThemeBuilderPage } from "@/features/theme-builder/theme-builder-page";
+import { OrdersPage } from "@/features/dashboard/views/orders-page";
 
-export default function ThemeBuilderRoute() {
+export default function OrdersRoute() {
   return (
     <ProtectedAppShell>
-      <ThemeBuilderPage />
+      <OrdersPage />
     </ProtectedAppShell>
   );
 }
