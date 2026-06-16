@@ -41,6 +41,10 @@ export type PasskeyRegisterVerifyBody = {
   passkeyName?: string;
 };
 
+export type PasskeyRemoveBody = {
+  passkeyId?: string;
+};
+
 export type PasskeyLoginStartBody = {
   loginName?: string;
   domain?: string;

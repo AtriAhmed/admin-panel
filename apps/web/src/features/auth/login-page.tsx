@@ -314,15 +314,6 @@ export function LoginPage() {
                       value={resetCode}
                     />
                   </Field>
-                  <Field label="User ID">
-                    <Input
-                      aria-label="User ID"
-                      fullWidth
-                      onChange={(event) => setResetUserId(event.target.value)}
-                      placeholder="User ID from reset link"
-                      value={resetUserId}
-                    />
-                  </Field>
                   <Field label="New password">
                     <Input
                       aria-label="New password"
@@ -349,7 +340,7 @@ export function LoginPage() {
                 </p>
               ) : null}
             </Card.Content>
-            <Card.Footer className="flex-col items-stretch gap-3">
+            <Card.Footer className="mt-2 flex-col items-stretch gap-3">
               <Button isDisabled={!canSubmit} type="submit">
                 <ArrowRightToSquare className="size-4" />
                 {mode === "login"

@@ -4,12 +4,13 @@ import type { ReactNode } from "react";
 
 import { AppLayout } from "@heroui-pro/react";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useState } from "react";
 
 import { footerItems, navItems } from "../nav-items";
 
 import { DashboardNavbar } from "./dashboard-navbar";
 import { DashboardSidebar } from "./dashboard-sidebar";
+import { LogoutConfirmationModal } from "./logout-confirmation-modal";
 
 type ShellUser = {
   displayName?: string | null;
@@ -30,6 +31,7 @@ export interface AppShellProps {
 export function AppShell({ basePath = "", children, user }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const [isLogoutOpen, setIsLogoutOpen] = useState(false);
   const userName = user?.displayName || user?.email || user?.loginName || "Admin";
   const homeGreeting = `Good morning, ${userName.split(" ")[0] || "Admin"}`;
 
@@ -47,13 +49,23 @@ export function AppShell({ basePath = "", children, user }: AppShellProps) {
   }, [basePath, pathname]);
 
   return (
-    <AppLayout
-      navbar={<DashboardNavbar title={title} />}
-      navigate={navigate}
-      sidebar={<DashboardSidebar basePath={basePath} pathname={pathname} user={user} />}
-      sidebarCollapsible="offcanvas"
-    >
-      {children}
-    </AppLayout>
+    <>
+      <AppLayout
+        navbar={<DashboardNavbar title={title} />}
+        navigate={navigate}
+        sidebar={
+          <DashboardSidebar
+            basePath={basePath}
+            onLogoutRequest={() => setIsLogoutOpen(true)}
+            pathname={pathname}
+            user={user}
+          />
+        }
+        sidebarCollapsible="offcanvas"
+      >
+        {children}
+      </AppLayout>
+      <LogoutConfirmationModal isOpen={isLogoutOpen} onOpenChange={setIsLogoutOpen} />
+    </>
   );
 }

@@ -43,7 +43,9 @@ export function SettingsPage({ userId }: { userId: string }) {
   const [passkeyMessage, setPasskeyMessage] = useState<string | null>(null);
   const [passkeyError, setPasskeyError] = useState<string | null>(null);
   const [hasPasskey, setHasPasskey] = useState(false);
+  const [passkeyId, setPasskeyId] = useState<string | null>(null);
   const [isAddingPasskey, setIsAddingPasskey] = useState(false);
+  const [isRemovingPasskey, setIsRemovingPasskey] = useState(false);
   const passkeyStorageKey = useMemo(
     () =>
       typeof window === "undefined"
@@ -57,15 +59,31 @@ export function SettingsPage({ userId }: { userId: string }) {
       return;
     }
 
-    setHasPasskey(window.localStorage.getItem(passkeyStorageKey) === "true");
+    const storedPasskey = readStoredPasskey(window.localStorage.getItem(passkeyStorageKey));
+
+    setHasPasskey(storedPasskey.hasPasskey);
+    setPasskeyId(storedPasskey.passkeyId);
   }, [passkeyStorageKey]);
 
-  const markPasskeyAdded = () => {
+  const markPasskeyAdded = (nextPasskeyId?: string) => {
     if (passkeyStorageKey) {
-      window.localStorage.setItem(passkeyStorageKey, "true");
+      window.localStorage.setItem(
+        passkeyStorageKey,
+        JSON.stringify({ passkeyId: nextPasskeyId ?? null }),
+      );
     }
 
     setHasPasskey(true);
+    setPasskeyId(nextPasskeyId ?? null);
+  };
+
+  const clearStoredPasskey = () => {
+    if (passkeyStorageKey) {
+      window.localStorage.removeItem(passkeyStorageKey);
+    }
+
+    setHasPasskey(false);
+    setPasskeyId(null);
   };
 
   const addPasskey = async () => {
@@ -108,7 +126,7 @@ export function SettingsPage({ userId }: { userId: string }) {
       }).then((response) => parseApiResponse<{ ok: true }>(response));
 
       setPasskeyMessage("Passkey added. You can use it next time you sign in.");
-      markPasskeyAdded();
+      markPasskeyAdded(start.passkeyId);
     } catch (caught) {
       if (isDuplicatePasskeyError(caught)) {
         markPasskeyAdded();
@@ -119,6 +137,37 @@ export function SettingsPage({ userId }: { userId: string }) {
       setPasskeyError(formatPasskeyError(caught, "register"));
     } finally {
       setIsAddingPasskey(false);
+    }
+  };
+
+  const removePasskey = async () => {
+    setIsRemovingPasskey(true);
+    setPasskeyMessage(null);
+    setPasskeyError(null);
+
+    try {
+      if (!passkeyId) {
+        clearStoredPasskey();
+        setPasskeyMessage(
+          "Removed the saved passkey marker for this browser. Older saved passkeys must be removed from your identity provider.",
+        );
+        return;
+      }
+
+      await fetch("/api/auth/passkeys/remove", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ passkeyId }),
+      }).then((response) => parseApiResponse<{ ok: true }>(response));
+
+      clearStoredPasskey();
+      setPasskeyMessage("Passkey removed for this browser.");
+    } catch (caught) {
+      setPasskeyError(caught instanceof Error ? caught.message : "Could not remove passkey.");
+    } finally {
+      setIsRemovingPasskey(false);
     }
   };
 
@@ -258,11 +307,38 @@ export function SettingsPage({ userId }: { userId: string }) {
       >
         <div className="flex flex-col gap-3">
           {hasPasskey ? (
-            <div className="rounded-md border border-success/30 bg-success/10 px-3 py-2 text-sm text-success">
-              Passkey already added for this browser.
+            <div className="flex flex-col gap-3 rounded-md border border-success/30 bg-success/10 px-3 py-2">
+              <p className="text-sm text-success">
+                Passkey already added for this browser.
+              </p>
+              {!passkeyId ? (
+                <p className="text-xs text-success">
+                  This saved marker was created before passkey removal was tracked.
+                </p>
+              ) : null}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  isDisabled={isRemovingPasskey}
+                  onPress={removePasskey}
+                  type="button"
+                  variant="danger-soft"
+                >
+                  {isRemovingPasskey
+                    ? passkeyId
+                      ? "Removing passkey..."
+                      : "Clearing marker..."
+                    : passkeyId
+                      ? "Remove passkey"
+                      : "Clear saved marker"}
+                </Button>
+              </div>
             </div>
           ) : (
-            <Button isDisabled={isAddingPasskey} onPress={addPasskey} type="button">
+            <Button
+              isDisabled={isAddingPasskey || isRemovingPasskey}
+              onPress={addPasskey}
+              type="button"
+            >
               {isAddingPasskey ? "Adding passkey..." : "Add passkey"}
             </Button>
           )}
@@ -301,6 +377,28 @@ async function parseApiResponse<T>(response: Response) {
   }
 
   return data as T;
+}
+
+function readStoredPasskey(value: string | null) {
+  if (!value) {
+    return { hasPasskey: false, passkeyId: null };
+  }
+
+  if (value === "true") {
+    return { hasPasskey: true, passkeyId: null };
+  }
+
+  try {
+    const parsed = JSON.parse(value) as { passkeyId?: unknown } | null;
+    const passkeyId =
+      typeof parsed?.passkeyId === "string" && parsed.passkeyId.trim()
+        ? parsed.passkeyId.trim()
+        : null;
+
+    return { hasPasskey: true, passkeyId };
+  } catch {
+    return { hasPasskey: true, passkeyId: null };
+  }
 }
 
 interface SettingsRowProps {

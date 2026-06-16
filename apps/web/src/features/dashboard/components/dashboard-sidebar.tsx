@@ -10,6 +10,7 @@ import { footerItems, navItems } from "../nav-items";
 interface DashboardSidebarProps {
   basePath: string;
   disableNavigation?: boolean;
+  onLogoutRequest?: () => void;
   pathname: string;
   user?: {
     displayName?: string | null;
@@ -21,6 +22,7 @@ interface DashboardSidebarProps {
 export function DashboardSidebar({
   basePath,
   disableNavigation = false,
+  onLogoutRequest,
   pathname,
   user,
 }: DashboardSidebarProps) {
@@ -31,6 +33,7 @@ export function DashboardSidebar({
           basePath={basePath}
           disableNavigation={disableNavigation}
           pathname={pathname}
+          onLogoutRequest={onLogoutRequest}
           user={user}
         />
       </Sidebar>
@@ -40,6 +43,7 @@ export function DashboardSidebar({
           disableNavigation={disableNavigation}
           idPrefix="mobile-"
           pathname={pathname}
+          onLogoutRequest={onLogoutRequest}
           user={user}
         />
       </Sidebar.Mobile>
@@ -51,6 +55,7 @@ interface SidebarContentsProps {
   basePath: string;
   disableNavigation: boolean;
   idPrefix?: string;
+  onLogoutRequest?: () => void;
   pathname: string;
   user?: {
     displayName?: string | null;
@@ -63,6 +68,7 @@ function SidebarContents({
   basePath,
   disableNavigation,
   idPrefix = "",
+  onLogoutRequest,
   pathname,
   user,
 }: SidebarContentsProps) {
@@ -100,6 +106,7 @@ function SidebarContents({
                 idPrefix={idPrefix}
                 item={item}
                 key={item.href}
+                onLogoutRequest={onLogoutRequest}
                 pathname={pathname}
               />
             ))}
@@ -115,6 +122,7 @@ function SidebarContents({
               idPrefix={idPrefix}
               item={item}
               key={item.href}
+              onLogoutRequest={onLogoutRequest}
               pathname={pathname}
             />
           ))}
@@ -140,6 +148,7 @@ interface SidebarNavItemProps {
   disableNavigation: boolean;
   idPrefix: string;
   item: NavItem;
+  onLogoutRequest?: () => void;
   pathname: string;
 }
 
@@ -148,10 +157,12 @@ function SidebarNavItem({
   disableNavigation,
   idPrefix,
   item,
+  onLogoutRequest,
   pathname,
 }: SidebarNavItemProps) {
   const Icon = item.icon;
   const fullHref = basePath + item.href;
+  const isLogout = item.href === "/logout";
   const isCurrent =
     item.href === "/"
       ? pathname === fullHref || pathname === basePath || pathname === `${basePath}/`
@@ -159,9 +170,10 @@ function SidebarNavItem({
 
   return (
     <Sidebar.MenuItem
-      href={disableNavigation ? undefined : fullHref}
+      href={disableNavigation || (isLogout && onLogoutRequest) ? undefined : fullHref}
       id={`${idPrefix}${item.href}`}
       isCurrent={isCurrent}
+      onAction={isLogout ? onLogoutRequest : undefined}
       textValue={item.label}
     >
       <Sidebar.MenuIcon>

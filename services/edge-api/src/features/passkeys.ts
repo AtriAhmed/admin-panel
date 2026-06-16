@@ -1,4 +1,4 @@
-import type { Hono } from 'hono';
+import type { Context, Hono } from 'hono';
 import { nanoid } from 'nanoid';
 import { config } from '../config.js';
 import { createAppSession, getSession, pendingPasskeyLogins } from '../state.js';
@@ -8,6 +8,7 @@ import type {
   AuthUser,
   PasskeyLoginStartBody,
   PasskeyLoginVerifyBody,
+  PasskeyRemoveBody,
   PasskeyRegisterStartBody,
   PasskeyRegisterVerifyBody,
   ZitadelRegisterPasskeyResponse,
@@ -71,6 +72,12 @@ async function verifyZitadelPasskeyRegistration(
       publicKeyCredential,
       passkeyName,
     },
+  });
+}
+
+async function removeZitadelPasskey(userId: string, passkeyId: string) {
+  await zitadelJson(`/v2/users/${encodeURIComponent(userId)}/passkeys/${encodeURIComponent(passkeyId)}`, {
+    method: 'DELETE',
   });
 }
 
@@ -269,6 +276,36 @@ export function registerPasskeyRoutes(app: Hono) {
       );
     }
   });
+
+  const removePasskey = async (c: Context) => {
+    const session = getSession(c.req.header('Authorization'));
+
+    if (!session) {
+      return c.json({ message: 'Unauthorized.' }, 401);
+    }
+
+    const body = await c.req.json<PasskeyRemoveBody>().catch(() => null);
+    const passkeyId = body?.passkeyId?.trim();
+
+    if (!passkeyId) {
+      return c.json({ message: 'passkeyId is required.' }, 400);
+    }
+
+    try {
+      await removeZitadelPasskey(session.user.id, passkeyId);
+      return c.json({ ok: true });
+    } catch (error) {
+      return c.json(
+        {
+          message: error instanceof Error ? error.message : 'Could not remove passkey.',
+        },
+        400
+      );
+    }
+  };
+
+  app.post('/auth/passkeys/remove', removePasskey);
+  app.delete('/auth/passkeys', removePasskey);
 
   app.post('/auth/passkeys/login/start', async (c) => {
     const body = await c.req.json<PasskeyLoginStartBody>().catch(() => null);
