@@ -4,15 +4,16 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "services/*",
     "packages/*"
   ],
   "scripts": {
-    "dev:admin": "npm --workspace apps/admin run dev",
+    "dev:web": "npm --workspace apps/web run dev",
     "dev:mobile": "npm --workspace apps/mobile run start",
-    "dev:bff": "npm --workspace apps/auth-bff run dev",
-    "build:admin": "npm --workspace apps/admin run build",
-    "build:bff": "npm --workspace apps/auth-bff run build",
-    "typecheck:bff": "npm --workspace apps/auth-bff run typecheck",
+    "dev:edge-api": "npm --workspace services/edge-api run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "build:edge-api": "npm --workspace services/edge-api run build",
+    "typecheck:edge-api": "npm --workspace services/edge-api run typecheck",
     "lint:mobile": "npm --workspace apps/mobile run lint"
   }
 }
