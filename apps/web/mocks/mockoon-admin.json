@@ -1,0 +1,375 @@
+{
+  "uuid": "b9d1f372-7e52-4ed9-9499-376d28370939",
+  "lastMigration": 33,
+  "name": "Admin Panel Mock API",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3000,
+  "hostname": "",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "09691c5e-9946-4ecf-a573-797a34ac5e8a",
+      "type": "http",
+      "documentation": "Current mock admin user",
+      "method": "get",
+      "endpoint": "users/me",
+      "responses": [
+        {
+          "uuid": "ad6446ee-453e-42eb-b8b4-449066def54f",
+          "body": "{\"id\":\"usr_admin_01\",\"loginName\":\"admin@example.com\",\"email\":\"admin@example.com\",\"displayName\":\"Nadia Admin\",\"role\":\"Operations Admin\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Current user",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "3335e354-6f37-4cea-aa8b-563fea17440c",
+      "type": "http",
+      "documentation": "Mock analytics summary",
+      "method": "get",
+      "endpoint": "analytics/summary",
+      "responses": [
+        {
+          "uuid": "c0cff27a-c18c-4c76-ab4f-f9bddc98d4e1",
+          "body": "{\"revenue\":184250,\"orders\":1248,\"conversionRate\":7.4,\"openTickets\":18,\"period\":\"Last 30 days\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Analytics summary",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "49a50aff-2b30-4063-9c22-984cc7b2c48a",
+      "type": "http",
+      "documentation": "Mock customers",
+      "method": "get",
+      "endpoint": "customers",
+      "responses": [
+        {
+          "uuid": "f162b7f2-12b7-4265-b90d-30e9a73408c2",
+          "body": "[{\"id\":\"cus_1001\",\"name\":\"Mina Patel\",\"email\":\"mina.patel@example.com\",\"segment\":\"Enterprise\",\"lifetimeValue\":18540},{\"id\":\"cus_1002\",\"name\":\"Jon Bell\",\"email\":\"jon.bell@example.com\",\"segment\":\"Growth\",\"lifetimeValue\":7420}]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Customers",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "d99a3b52-9dfd-42b5-8506-2cb16e759e58",
+      "type": "http",
+      "documentation": "Mock orders",
+      "method": "get",
+      "endpoint": "orders",
+      "responses": [
+        {
+          "uuid": "903a5c8c-d4bd-46da-ad08-690e3fef3cdc",
+          "body": "[{\"id\":\"ord_1001\",\"orderId\":\"#1001\",\"customer\":{\"id\":\"cus_1001\",\"name\":\"Mina Patel\",\"email\":\"mina.patel@example.com\"},\"status\":\"Paid\",\"total\":284.5,\"currency\":\"USD\",\"date\":\"2026-06-12T10:20:00.000Z\"},{\"id\":\"ord_1002\",\"orderId\":\"#1002\",\"customer\":{\"id\":\"cus_1002\",\"name\":\"Jon Bell\",\"email\":\"jon.bell@example.com\"},\"status\":\"Pending\",\"total\":719.99,\"currency\":\"USD\",\"date\":\"2026-06-11T15:45:00.000Z\"},{\"id\":\"ord_1003\",\"orderId\":\"#1003\",\"customer\":{\"id\":\"cus_1003\",\"name\":\"Sofia Chen\",\"email\":\"sofia.chen@example.com\"},\"status\":\"Refunded\",\"total\":124.75,\"currency\":\"USD\",\"date\":\"2026-06-10T09:05:00.000Z\"}]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Orders",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "f4cc439b-b280-4df6-957f-1c70ef2a7a19",
+      "type": "http",
+      "documentation": "Mock order detail",
+      "method": "get",
+      "endpoint": "orders/:id",
+      "responses": [
+        {
+          "uuid": "829cf090-2141-4dc4-9898-c1c0f7d9f0be",
+          "body": "{\"id\":\"{{urlParam 'id'}}\",\"orderId\":\"#1001\",\"customer\":{\"id\":\"cus_1001\",\"name\":\"Mina Patel\",\"email\":\"mina.patel@example.com\"},\"status\":\"Paid\",\"total\":284.5,\"currency\":\"USD\",\"date\":\"2026-06-12T10:20:00.000Z\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Order detail",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "193724c7-b4cc-416e-93a2-49a2e6c38477",
+      "type": "http",
+      "documentation": "Mock order update",
+      "method": "patch",
+      "endpoint": "orders/:id",
+      "responses": [
+        {
+          "uuid": "4c3a6f2c-99a7-4edd-93fc-837f0fe5da2a",
+          "body": "{\"id\":\"{{urlParam 'id'}}\",\"orderId\":\"#1001\",\"customer\":{\"id\":\"cus_1001\",\"name\":\"Mina Patel\",\"email\":\"mina.patel@example.com\"},\"status\":\"Paid\",\"total\":284.5,\"currency\":\"USD\",\"date\":\"2026-06-12T10:20:00.000Z\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "Updated order",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "b79a78c5-b232-4307-9e8b-2f4eaa176fa6",
+      "type": "http",
+      "documentation": "Mock CMS pages",
+      "method": "get",
+      "endpoint": "cms/pages",
+      "responses": [
+        {
+          "uuid": "41e7dc23-579c-4be3-8dde-9f5877a3cf04",
+          "body": "[{\"id\":\"page_home\",\"slug\":\"home\",\"title\":\"Operations home\",\"status\":\"published\",\"updatedAt\":\"2026-06-13T14:00:00.000Z\"},{\"id\":\"page_help\",\"slug\":\"help-center\",\"title\":\"Help center\",\"status\":\"draft\",\"updatedAt\":\"2026-06-09T11:30:00.000Z\"}]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "CMS pages",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "f37b2392-c632-4f3e-8dda-81e7a730732a",
+      "type": "http",
+      "documentation": "Mock CMS page detail",
+      "method": "get",
+      "endpoint": "cms/pages/:slug",
+      "responses": [
+        {
+          "uuid": "1987fd5b-72ab-483f-8d7b-a3878540a38b",
+          "body": "{\"id\":\"page_{{urlParam 'slug'}}\",\"slug\":\"{{urlParam 'slug'}}\",\"title\":\"Operations home\",\"status\":\"published\",\"updatedAt\":\"2026-06-13T14:00:00.000Z\",\"blocks\":[{\"type\":\"hero\",\"heading\":\"Review daily operations\",\"body\":\"A Payload-shaped content entry for validating admin CMS integration flows.\"}]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "CMS page detail",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "09691c5e-9946-4ecf-a573-797a34ac5e8a"
+    },
+    {
+      "type": "route",
+      "uuid": "3335e354-6f37-4cea-aa8b-563fea17440c"
+    },
+    {
+      "type": "route",
+      "uuid": "49a50aff-2b30-4063-9c22-984cc7b2c48a"
+    },
+    {
+      "type": "route",
+      "uuid": "d99a3b52-9dfd-42b5-8506-2cb16e759e58"
+    },
+    {
+      "type": "route",
+      "uuid": "f4cc439b-b280-4df6-957f-1c70ef2a7a19"
+    },
+    {
+      "type": "route",
+      "uuid": "193724c7-b4cc-416e-93a2-49a2e6c38477"
+    },
+    {
+      "type": "route",
+      "uuid": "b79a78c5-b232-4307-9e8b-2f4eaa176fa6"
+    },
+    {
+      "type": "route",
+      "uuid": "f37b2392-c632-4f3e-8dda-81e7a730732a"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Access-Control-Allow-Origin",
+      "value": "*"
+    },
+    {
+      "key": "Access-Control-Allow-Methods",
+      "value": "GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS"
+    },
+    {
+      "key": "Access-Control-Allow-Headers",
+      "value": "Content-Type, Origin, Accept, Authorization, Content-Length, X-Requested-With"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

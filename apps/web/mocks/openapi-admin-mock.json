@@ -1,0 +1,290 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Admin Panel Mock API",
+    "version": "0.1.0"
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:4010"
+    }
+  ],
+  "paths": {
+    "/users/me": {
+      "get": {
+        "summary": "Current mock admin user",
+        "responses": {
+          "200": {
+            "description": "Current user",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "usr_admin_01",
+                  "loginName": "admin@example.com",
+                  "email": "admin@example.com",
+                  "displayName": "Nadia Admin",
+                  "role": "Operations Admin"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/analytics/summary": {
+      "get": {
+        "summary": "Mock analytics summary",
+        "responses": {
+          "200": {
+            "description": "Analytics summary",
+            "content": {
+              "application/json": {
+                "example": {
+                  "revenue": 184250,
+                  "orders": 1248,
+                  "conversionRate": 7.4,
+                  "openTickets": 18,
+                  "period": "Last 30 days"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/customers": {
+      "get": {
+        "summary": "Mock customers",
+        "responses": {
+          "200": {
+            "description": "Customers",
+            "content": {
+              "application/json": {
+                "example": [
+                  {
+                    "id": "cus_1001",
+                    "name": "Mina Patel",
+                    "email": "mina.patel@example.com",
+                    "segment": "Enterprise",
+                    "lifetimeValue": 18540
+                  },
+                  {
+                    "id": "cus_1002",
+                    "name": "Jon Bell",
+                    "email": "jon.bell@example.com",
+                    "segment": "Growth",
+                    "lifetimeValue": 7420
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders": {
+      "get": {
+        "summary": "Mock orders",
+        "responses": {
+          "200": {
+            "description": "Orders",
+            "content": {
+              "application/json": {
+                "example": [
+                  {
+                    "id": "ord_1001",
+                    "orderId": "#1001",
+                    "customer": {
+                      "id": "cus_1001",
+                      "name": "Mina Patel",
+                      "email": "mina.patel@example.com"
+                    },
+                    "status": "Paid",
+                    "total": 284.5,
+                    "currency": "USD",
+                    "date": "2026-06-12T10:20:00.000Z"
+                  },
+                  {
+                    "id": "ord_1002",
+                    "orderId": "#1002",
+                    "customer": {
+                      "id": "cus_1002",
+                      "name": "Jon Bell",
+                      "email": "jon.bell@example.com"
+                    },
+                    "status": "Pending",
+                    "total": 719.99,
+                    "currency": "USD",
+                    "date": "2026-06-11T15:45:00.000Z"
+                  },
+                  {
+                    "id": "ord_1003",
+                    "orderId": "#1003",
+                    "customer": {
+                      "id": "cus_1003",
+                      "name": "Sofia Chen",
+                      "email": "sofia.chen@example.com"
+                    },
+                    "status": "Refunded",
+                    "total": 124.75,
+                    "currency": "USD",
+                    "date": "2026-06-10T09:05:00.000Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{id}": {
+      "get": {
+        "summary": "Mock order detail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order detail",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "ord_1001",
+                  "orderId": "#1001",
+                  "customer": {
+                    "id": "cus_1001",
+                    "name": "Mina Patel",
+                    "email": "mina.patel@example.com"
+                  },
+                  "status": "Paid",
+                  "total": 284.5,
+                  "currency": "USD",
+                  "date": "2026-06-12T10:20:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "summary": "Mock order update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Updated order",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "ord_1001",
+                  "orderId": "#1001",
+                  "customer": {
+                    "id": "cus_1001",
+                    "name": "Mina Patel",
+                    "email": "mina.patel@example.com"
+                  },
+                  "status": "Paid",
+                  "total": 284.5,
+                  "currency": "USD",
+                  "date": "2026-06-12T10:20:00.000Z"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cms/pages": {
+      "get": {
+        "summary": "Mock CMS pages",
+        "responses": {
+          "200": {
+            "description": "CMS pages",
+            "content": {
+              "application/json": {
+                "example": [
+                  {
+                    "id": "page_home",
+                    "slug": "home",
+                    "title": "Operations home",
+                    "status": "published",
+                    "updatedAt": "2026-06-13T14:00:00.000Z"
+                  },
+                  {
+                    "id": "page_help",
+                    "slug": "help-center",
+                    "title": "Help center",
+                    "status": "draft",
+                    "updatedAt": "2026-06-09T11:30:00.000Z"
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cms/pages/{slug}": {
+      "get": {
+        "summary": "Mock CMS page detail",
+        "parameters": [
+          {
+            "name": "slug",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CMS page detail",
+            "content": {
+              "application/json": {
+                "example": {
+                  "id": "page_home",
+                  "slug": "home",
+                  "title": "Operations home",
+                  "status": "published",
+                  "updatedAt": "2026-06-13T14:00:00.000Z",
+                  "blocks": [
+                    {
+                      "type": "hero",
+                      "heading": "Review daily operations",
+                      "body": "A Payload-shaped content entry for validating admin CMS integration flows."
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

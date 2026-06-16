@@ -19,7 +19,12 @@ type ShellUser = {
 };
 
 const routeLabels = new Map<string, string>(
-  [...navItems, ...footerItems].map((item) => [item.href, item.label]),
+  [
+    ...[...navItems, ...footerItems].map((item) => [item.href, item.label] as const),
+    ["/operations/workspace", "Operations Workspace"],
+    ["/operations/insights", "Operations Insights"],
+    ["/operations/fulfillment", "Fulfillment Queue"],
+  ],
 );
 
 export interface AppShellProps {

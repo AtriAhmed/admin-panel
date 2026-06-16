@@ -18,6 +18,9 @@ node_modules/
 .next/
 out/
 
+# local Payload CMS data
+apps/web/.payload/
+
 # production
 build/
 
