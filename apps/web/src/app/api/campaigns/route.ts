@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { createCampaign, listCampaigns } from "@/lib/admin/repositories/campaigns";
 import { CreateCampaignSchema } from "@/lib/admin/schemas/campaigns";
-import { createCampaign, listCampaigns } from "@/lib/cms/repositories/campaigns";
 
 export async function GET() {
   try {

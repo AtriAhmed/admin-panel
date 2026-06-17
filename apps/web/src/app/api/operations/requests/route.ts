@@ -5,7 +5,7 @@ import { createContentSlug } from "@/lib/admin/slug";
 import {
   createOperationRequest,
   listOperationRequests,
-} from "@/lib/cms/repositories/operation-requests";
+} from "@/lib/admin/repositories/operation-requests";
 
 export async function GET() {
   try {
@@ -27,7 +27,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as unknown;
-  const payload =
+  const requestBody =
     body && typeof body === "object"
       ? {
           ...body,
@@ -35,9 +35,9 @@ export async function POST(request: Request) {
             "slug" in body && typeof body.slug === "string"
               ? createContentSlug(body.slug)
               : undefined,
-        }
+      }
       : body;
-  const parsed = CreateOperationRequestSchema.safeParse(payload);
+  const parsed = CreateOperationRequestSchema.safeParse(requestBody);
 
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

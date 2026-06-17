@@ -1,0 +1,24 @@
+{
+  "name": "@admin-panel/payload-cms-example",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --port 3001",
+    "build": "next build --webpack",
+    "start": "next start --port 3001"
+  },
+  "dependencies": {
+    "@payloadcms/db-sqlite": "^3.85.1",
+    "@payloadcms/next": "^3.85.1",
+    "next": "16.2.9",
+    "payload": "^3.85.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "typescript": "^5"
+  }
+}

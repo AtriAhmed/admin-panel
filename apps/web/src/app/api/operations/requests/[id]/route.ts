@@ -5,7 +5,7 @@ import { createContentSlug } from "@/lib/admin/slug";
 import {
   deleteOperationRequest,
   updateOperationRequest,
-} from "@/lib/cms/repositories/operation-requests";
+} from "@/lib/admin/repositories/operation-requests";
 
 type RouteContext = {
   params: Promise<{
@@ -16,7 +16,7 @@ type RouteContext = {
 export async function PATCH(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const body = (await request.json().catch(() => null)) as unknown;
-  const payload =
+  const requestBody =
     body && typeof body === "object"
       ? {
           ...body,
@@ -24,9 +24,9 @@ export async function PATCH(request: Request, context: RouteContext) {
             "slug" in body && typeof body.slug === "string"
               ? createContentSlug(body.slug)
               : undefined,
-        }
+      }
       : body;
-  const parsed = UpdateOperationRequestSchema.safeParse(payload);
+  const parsed = UpdateOperationRequestSchema.safeParse(requestBody);
 
   if (!parsed.success) {
     const issue = parsed.error.issues[0];

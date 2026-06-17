@@ -4,14 +4,21 @@
   "private": true,
   "workspaces": [
     "apps/*",
+    "examples/*",
     "services/*",
     "packages/*"
   ],
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
+    "dev:document-scanner": "npm --workspace examples/document-scanner run start",
+    "dev:expo-heroui": "npm --workspace examples/expo-heroui run start",
+    "dev:expo-pwa": "npm --workspace examples/expo-pwa run start",
+    "dev:payload-example": "npm --workspace examples/payload-cms run dev",
+    "dev:zitadel-expo-auth": "npm --workspace examples/zitadel-expo-auth run start",
     "dev:mobile": "npm --workspace apps/mobile run start",
     "dev:edge-api": "npm --workspace services/edge-api run dev",
     "build:web": "npm --workspace apps/web run build",
+    "build:payload-example": "npm --workspace examples/payload-cms run build",
     "build:edge-api": "npm --workspace services/edge-api run build",
     "typecheck:edge-api": "npm --workspace services/edge-api run typecheck",
     "lint:mobile": "npm --workspace apps/mobile run lint"

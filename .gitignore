@@ -2,6 +2,8 @@
 
 # dependencies
 node_modules/
+
+# devenv generated state; keep devenv.nix, devenv.yaml, and /devenv tracked
 .devenv/
 /.pnp
 .pnp.*
@@ -18,8 +20,10 @@ node_modules/
 .next/
 out/
 
-# local Payload CMS data
+# local demo databases
+apps/web/.admin-data/
 apps/web/.payload/
+examples/*/.payload/
 
 # production
 build/

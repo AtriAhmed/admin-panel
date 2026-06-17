@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { deleteCampaign, updateCampaign } from "@/lib/admin/repositories/campaigns";
 import { UpdateCampaignSchema } from "@/lib/admin/schemas/campaigns";
-import { deleteCampaign, updateCampaign } from "@/lib/cms/repositories/campaigns";
 
 type RouteContext = {
   params: Promise<{
