@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
-import { UpdateCampaignSchema } from "@/lib/admin/schemas";
-import { updateCampaign } from "@/lib/cms/repositories/campaigns";
+import { UpdateCampaignSchema } from "@/lib/admin/schemas/campaigns";
+import { deleteCampaign, updateCampaign } from "@/lib/cms/repositories/campaigns";
 
 type RouteContext = {
   params: Promise<{
@@ -36,6 +36,24 @@ export async function PATCH(request: Request, context: RouteContext) {
       {
         message:
           error instanceof Error ? error.message : "Could not update campaign.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const { id } = await context.params;
+
+  try {
+    const result = await deleteCampaign(id);
+
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error ? error.message : "Could not delete campaign.",
       },
       { status: 500 },
     );

@@ -73,6 +73,17 @@ export async function updateOperationRequest(
   return normalizeOperationRequest(page);
 }
 
+export async function deleteOperationRequest(id: string): Promise<{ id: string }> {
+  const payload = await getPayloadCms();
+
+  await payload.delete({
+    collection,
+    id,
+  });
+
+  return { id };
+}
+
 function normalizeOperationRequest(doc: unknown): OperationRequestRecord {
   const page = doc as PayloadOperationRequestDocument;
 

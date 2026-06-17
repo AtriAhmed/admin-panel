@@ -73,6 +73,17 @@ export async function updateCampaign(
   return normalizeCampaign(campaign);
 }
 
+export async function deleteCampaign(id: string): Promise<{ id: string }> {
+  const payload = await getPayloadCms();
+
+  await payload.delete({
+    collection,
+    id,
+  });
+
+  return { id };
+}
+
 function normalizeCampaign(doc: unknown): CampaignBriefRecord {
   const campaign = doc as PayloadCampaignBriefDocument;
 

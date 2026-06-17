@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 
-import { UpdateOperationRequestSchema } from "@/lib/admin/schemas";
+import { UpdateOperationRequestSchema } from "@/lib/admin/schemas/operations";
 import { createContentSlug } from "@/lib/admin/slug";
-import { updateOperationRequest } from "@/lib/cms/repositories/operation-requests";
+import {
+  deleteOperationRequest,
+  updateOperationRequest,
+} from "@/lib/cms/repositories/operation-requests";
 
 type RouteContext = {
   params: Promise<{
@@ -27,14 +30,12 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (!parsed.success) {
     const issue = parsed.error.issues[0];
-    const fieldPath = issue?.path.length ? issue.path.join(".") : "";
+    const field = issue?.path[0] ? String(issue.path[0]) : undefined;
 
     return NextResponse.json(
       {
-        message:
-          fieldPath && issue?.message
-            ? `${fieldPath}: ${issue.message}`
-            : issue?.message ?? "Please complete the content request fields.",
+        message: issue?.message ?? "Please complete the content request fields.",
+        field,
       },
       { status: 400 },
     );
@@ -51,6 +52,26 @@ export async function PATCH(request: Request, context: RouteContext) {
           error instanceof Error
             ? error.message
             : "Could not update the operation request.",
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const { id } = await context.params;
+
+  try {
+    const result = await deleteOperationRequest(id);
+
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not delete the operation request.",
       },
       { status: 500 },
     );

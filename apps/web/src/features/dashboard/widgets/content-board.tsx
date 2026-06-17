@@ -10,11 +10,12 @@ import type { FormEvent } from "react";
 
 import { Button, Chip, Dropdown, Label, Modal, SearchField } from "@heroui/react";
 import { DataGrid } from "@heroui-pro/react";
-import { CirclePlus, Eye, Funnel, Pencil } from "@gravity-ui/icons";
+import { CirclePlus, Delete, Eye, Funnel, Pencil } from "@gravity-ui/icons";
 import { useMemo, useState } from "react";
 
 import { IconButton } from "@/components/ui/icon-button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DeleteConfirmationModal } from "@/features/dashboard/components/delete-confirmation-modal";
 import { createContentSlug } from "@/lib/admin/slug";
 
 const dateFormatOptions: Intl.DateTimeFormatOptions = {
@@ -64,12 +65,16 @@ function formatDate(iso: string): string {
 export function ContentBoard({
   createError,
   createErrorField,
+  deleteError,
   description,
+  isDeleting = false,
   isCreating,
   isLoading,
   isUpdating = false,
   loadError,
   onCreate,
+  onDelete,
+  onDeleteDismiss,
   onUpdate,
   pages,
   title,
@@ -78,12 +83,16 @@ export function ContentBoard({
 }: {
   createError?: string | null;
   createErrorField?: string | null;
+  deleteError?: string | null;
   description: string;
   isCreating: boolean;
+  isDeleting?: boolean;
   isLoading: boolean;
   isUpdating?: boolean;
   loadError?: string | null;
   onCreate: (event: FormEvent<HTMLFormElement>) => Promise<boolean>;
+  onDelete?: (page: OperationRequest) => Promise<boolean>;
+  onDeleteDismiss?: () => void;
   onUpdate?: (page: OperationRequest, event: FormEvent<HTMLFormElement>) => Promise<boolean>;
   pages: OperationRequest[];
   title: string;
@@ -91,6 +100,7 @@ export function ContentBoard({
   updateErrorField?: string | null;
 }) {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [deletingPage, setDeletingPage] = useState<OperationRequest | null>(null);
   const [editingPage, setEditingPage] = useState<OperationRequest | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<
@@ -172,16 +182,17 @@ export function ContentBoard({
         align: "end",
         cell: (item) => (
           <ContentRowActions
+            onDelete={onDelete ? () => setDeletingPage(item) : undefined}
             onEdit={onUpdate ? () => setEditingPage(item) : undefined}
             pageId={item.id}
           />
         ),
         header: "Actions",
         id: "actions",
-        minWidth: 120,
+        minWidth: 152,
       },
     ],
-    [onUpdate],
+    [onDelete, onUpdate],
   );
 
   const submitCreate = async (event: FormEvent<HTMLFormElement>) => {
@@ -201,6 +212,18 @@ export function ContentBoard({
 
     if (result) {
       setEditingPage(null);
+    }
+  };
+
+  const submitDelete = async () => {
+    if (!deletingPage || !onDelete) {
+      return;
+    }
+
+    const result = await onDelete(deletingPage);
+
+    if (result) {
+      setDeletingPage(null);
     }
   };
 
@@ -297,14 +320,39 @@ export function ContentBoard({
           page={editingPage}
         />
       ) : null}
+
+      {onDelete ? (
+        <DeleteConfirmationModal
+          confirmLabel="Delete request"
+          description={
+            deletingPage
+              ? `Delete "${deletingPage.title}" from the publishing queue. This cannot be undone.`
+              : "Delete this content request. This cannot be undone."
+          }
+          error={deleteError ?? null}
+          isBusy={isDeleting}
+          isOpen={Boolean(deletingPage)}
+          onConfirm={submitDelete}
+          onOpenChange={(nextOpen) => {
+            if (isDeleting) return;
+            if (!nextOpen) {
+              onDeleteDismiss?.();
+              setDeletingPage(null);
+            }
+          }}
+          title="Delete content request?"
+        />
+      ) : null}
     </section>
   );
 }
 
 function ContentRowActions({
+  onDelete,
   onEdit,
   pageId,
 }: {
+  onDelete?: () => void;
   onEdit?: () => void;
   pageId: string;
 }) {
@@ -321,6 +369,16 @@ function ContentRowActions({
           variant="tertiary"
         >
           <Pencil className="size-4" />
+        </IconButton>
+      ) : null}
+      {onDelete ? (
+        <IconButton
+          label="Delete content"
+          onPress={onDelete}
+          size="sm"
+          variant="tertiary"
+        >
+          <Delete className="size-4" />
         </IconButton>
       ) : null}
     </div>

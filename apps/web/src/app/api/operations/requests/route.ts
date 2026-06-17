@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { CreateOperationRequestSchema } from "@/lib/admin/schemas";
+import { CreateOperationRequestSchema } from "@/lib/admin/schemas/operations";
 import { createContentSlug } from "@/lib/admin/slug";
 import {
   createOperationRequest,

@@ -11,11 +11,12 @@ import type { DataGridColumn } from "@heroui-pro/react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button, Chip, Dropdown, Label, Modal, SearchField } from "@heroui/react";
 import { DataGrid, NumberValue } from "@heroui-pro/react";
-import { CirclePlus, Eye, Funnel, Pencil } from "@gravity-ui/icons";
+import { CirclePlus, Delete, Eye, Funnel, Pencil } from "@gravity-ui/icons";
 import { FormEvent, useMemo, useState } from "react";
 
 import { IconButton } from "@/components/ui/icon-button";
 import { EmptyState } from "@/components/ui/empty-state";
+import { DeleteConfirmationModal } from "@/features/dashboard/components/delete-confirmation-modal";
 import { adminApi } from "@/lib/admin/client";
 import { adminQueryKeys } from "@/lib/admin/query-keys";
 
@@ -95,8 +96,16 @@ export function CampaignsPage() {
       await queryClient.invalidateQueries({ queryKey: adminQueryKeys.campaigns });
     },
   });
+  const deleteCampaign = useMutation({
+    mutationFn: adminApi.deleteCampaign,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: adminQueryKeys.campaigns });
+    },
+  });
   const [createError, setCreateError] = useState<string | null>(null);
   const [createErrorField, setCreateErrorField] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deletingCampaign, setDeletingCampaign] = useState<Campaign | null>(null);
   const [updateError, setUpdateError] = useState<string | null>(null);
   const [updateErrorField, setUpdateErrorField] = useState<string | null>(null);
   const [editingCampaign, setEditingCampaign] = useState<Campaign | null>(null);
@@ -195,12 +204,13 @@ export function CampaignsPage() {
         cell: (item) => (
           <CampaignRowActions
             campaignId={item.id}
+            onDelete={() => setDeletingCampaign(item)}
             onEdit={() => setEditingCampaign(item)}
           />
         ),
         header: "Actions",
         id: "actions",
-        minWidth: 120,
+        minWidth: 152,
       },
     ],
     [],
@@ -253,6 +263,23 @@ export function CampaignsPage() {
         error instanceof Error && "field" in error
           ? (error as Error & { field?: string }).field ?? null
           : null,
+      );
+    }
+  };
+
+  const submitCampaignDelete = async () => {
+    if (!deletingCampaign) {
+      return;
+    }
+
+    setDeleteError(null);
+
+    try {
+      await deleteCampaign.mutateAsync(deletingCampaign.id);
+      setDeletingCampaign(null);
+    } catch (error) {
+      setDeleteError(
+        error instanceof Error ? error.message : "Could not delete campaign.",
       );
     }
   };
@@ -365,15 +392,38 @@ export function CampaignsPage() {
         }}
         onSubmit={submitCampaignUpdate}
       />
+
+      <DeleteConfirmationModal
+        confirmLabel="Delete campaign"
+        description={
+          deletingCampaign
+            ? `Delete "${deletingCampaign.name}" from the campaign planner. This cannot be undone.`
+            : "Delete this campaign. This cannot be undone."
+        }
+        error={deleteError}
+        isBusy={deleteCampaign.isPending}
+        isOpen={Boolean(deletingCampaign)}
+        onConfirm={submitCampaignDelete}
+        onOpenChange={(nextOpen) => {
+          if (deleteCampaign.isPending) return;
+          if (!nextOpen) {
+            setDeleteError(null);
+            setDeletingCampaign(null);
+          }
+        }}
+        title="Delete campaign?"
+      />
     </main>
   );
 }
 
 function CampaignRowActions({
   campaignId,
+  onDelete,
   onEdit,
 }: {
   campaignId: string;
+  onDelete: () => void;
   onEdit: () => void;
 }) {
   return (
@@ -388,6 +438,14 @@ function CampaignRowActions({
         variant="tertiary"
       >
         <Pencil className="size-4" />
+      </IconButton>
+      <IconButton
+        label="Delete campaign"
+        onPress={onDelete}
+        size="sm"
+        variant="tertiary"
+      >
+        <Delete className="size-4" />
       </IconButton>
     </div>
   );

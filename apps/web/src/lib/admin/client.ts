@@ -3,19 +3,24 @@ import type { ZodType } from "zod";
 import {
   CampaignSchema,
   CampaignsSchema,
+  type CreateCampaign,
+  type UpdateCampaign,
+} from "./schemas/campaigns";
+import {
+  OperationRequestsSchema,
+  OperationRequestSchema,
+  type CreateOperationRequest,
+  type UpdateOperationRequest,
+} from "./schemas/operations";
+import {
   MockAnalyticsSummarySchema,
   MockCustomersSchema,
   MockOrdersSchema,
   MockOrderSchema,
   MockUserSchema,
-  OperationRequestsSchema,
-  OperationRequestSchema,
-  type CreateCampaign,
-  type CreateOperationRequest,
   type MockOrderStatus,
-  type UpdateCampaign,
-  type UpdateOperationRequest,
-} from "./schemas";
+} from "./schemas/mock";
+import { DeleteRecordResultSchema } from "./schemas/shared";
 
 async function parseAdminResponse<T>(response: Response, schema: ZodType<T>) {
   const data = (await response.json().catch(() => null)) as unknown;
@@ -74,6 +79,16 @@ export const adminApi = {
     }).then((response) => parseAdminResponse(response, OperationRequestSchema)),
   customers: () => getMock("/customers", MockCustomersSchema),
   currentUser: () => getMock("/users/me", MockUserSchema),
+  deleteCampaign: (id: string) =>
+    fetch(`/api/campaigns/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      method: "DELETE",
+    }).then((response) => parseAdminResponse(response, DeleteRecordResultSchema)),
+  deleteOperationRequest: (id: string) =>
+    fetch(`/api/operations/requests/${encodeURIComponent(id)}`, {
+      cache: "no-store",
+      method: "DELETE",
+    }).then((response) => parseAdminResponse(response, DeleteRecordResultSchema)),
   order: (id: string) => getMock(`/orders/${encodeURIComponent(id)}`, MockOrderSchema),
   orders: () => getMock("/orders", MockOrdersSchema),
   updateCampaign: (id: string, data: UpdateCampaign) =>
