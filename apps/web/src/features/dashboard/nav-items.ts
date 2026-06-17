@@ -26,6 +26,7 @@ export const navItems: readonly NavItem[] = [
   { href: "/analytics", icon: ChartColumn, label: "Analytics" },
   { badge: "Preview", href: "/operations", icon: ListCheck, label: "Operations" },
   { badge: "Preview", href: "/campaigns", icon: Megaphone, label: "Campaigns" },
+  { href: "/cms/collections/operation-requests", icon: Pencil, label: "CMS" },
   { href: "/settings", icon: Gear, label: "Settings" },
 ];
 
