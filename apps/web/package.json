@@ -4,15 +4,19 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "mock:admin": "mockoon-cli start --data ./mocks/mockoon-admin.json --port 4010 --hostname 127.0.0.1 --disable-log-to-file",
     "build": "next build",
     "start": "next start"
   },
   "dependencies": {
+    "@libsql/client": "^0.14.0",
     "@gravity-ui/icons": "^2.18.0",
     "@heroui-pro/react": "^1.0.0-beta.5",
     "@heroui/react": "^3.1.0",
     "@heroui/styles": "^3.1.0",
     "@number-flow/react": "^0.6.0",
+    "@tanstack/react-query": "^5.101.0",
+    "@tanstack/react-query-devtools": "^5.101.0",
     "embla-carousel": "^8.6.0",
     "embla-carousel-react": "^8.6.0",
     "framer-motion": "^12.40.0",
@@ -30,10 +34,14 @@
     "remark-gfm": "^4.0.1",
     "shiki": "^4.2.0",
     "streamdown": "^2.5.0",
+    "swr": "^2.4.1",
     "tailwind-merge": "^3.6.0",
-    "tailwind-variants": "^3.2.2"
+    "tailwind-variants": "^3.2.2",
+    "zod": "^4.4.3",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@mockoon/cli": "^9.6.1",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
