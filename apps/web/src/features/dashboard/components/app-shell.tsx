@@ -7,6 +7,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 
 import { footerItems, navItems } from "../nav-items";
+import { useAdminUiStore } from "../admin-ui-store";
 
 import { DashboardNavbar } from "./dashboard-navbar";
 import { DashboardSidebar } from "./dashboard-sidebar";
@@ -21,9 +22,6 @@ type ShellUser = {
 const routeLabels = new Map<string, string>(
   [
     ...[...navItems, ...footerItems].map((item) => [item.href, item.label] as const),
-    ["/operations/workspace", "Operations Workspace"],
-    ["/operations/insights", "Operations Insights"],
-    ["/operations/fulfillment", "Fulfillment Queue"],
   ],
 );
 
@@ -37,6 +35,9 @@ export function AppShell({ basePath = "", children, user }: AppShellProps) {
   const router = useRouter();
   const pathname = usePathname();
   const [isLogoutOpen, setIsLogoutOpen] = useState(false);
+  const hasHydratedUi = useAdminUiStore((state) => state.hasHydrated);
+  const isSidebarOpen = useAdminUiStore((state) => state.isSidebarOpen);
+  const setSidebarOpen = useAdminUiStore((state) => state.setSidebarOpen);
   const userName = user?.displayName || user?.email || user?.loginName || "Admin";
   const homeGreeting = `Good morning, ${userName.split(" ")[0] || "Admin"}`;
 
@@ -66,7 +67,9 @@ export function AppShell({ basePath = "", children, user }: AppShellProps) {
             user={user}
           />
         }
+        onSidebarOpenChange={setSidebarOpen}
         sidebarCollapsible="offcanvas"
+        sidebarOpen={hasHydratedUi ? isSidebarOpen : undefined}
       >
         {children}
       </AppLayout>

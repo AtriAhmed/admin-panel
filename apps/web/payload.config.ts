@@ -1,16 +1,17 @@
 import { sqliteAdapter } from "@payloadcms/db-sqlite";
 import { buildConfig } from "payload";
 
-import { CmsPages } from "./src/payload/collections/cms-pages";
+import { CampaignBriefs } from "./src/payload/collections/campaign-briefs";
+import { OperationRequests } from "./src/payload/collections/operation-requests";
 
 export default buildConfig({
   admin: {
     user: undefined,
   },
-  collections: [CmsPages],
+  collections: [OperationRequests, CampaignBriefs],
   db: sqliteAdapter({
     client: {
-      url: process.env.PAYLOAD_DATABASE_URL ?? "file:./.payload/payload.db",
+      url: process.env.PAYLOAD_DATABASE_URL ?? "file:./.payload/admin-demo.db",
     },
   }),
   secret:
